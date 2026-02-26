@@ -10,7 +10,6 @@ import {
 } from 'react-native'
 import * as DocumentPicker from 'expo-document-picker'
 import * as ImagePicker from 'expo-image-picker'
-import * as FileSystem from 'expo-file-system'
 import { Ionicons } from '@expo/vector-icons'
 import { addToQueue } from '../utils/storage'
 
@@ -73,18 +72,23 @@ export default function AddPostScreen({ navigation }) {
       Alert.alert('No file selected', 'Pick a markdown file first.')
       return
     }
-    // Read the file content to verify it's readable
+
+    // Read content immediately while we have URI access.
+    // Use fetch() because it handles both file:// and content:// URIs on Android.
+    let content
     try {
-      await FileSystem.readAsStringAsync(mdFile.uri)
+      const response = await fetch(mdFile.uri)
+      content = await response.text()
+      if (!content && content !== '') throw new Error('empty')
     } catch {
-      Alert.alert('Cannot read file', 'The file could not be read. Make sure it is a plain text or markdown file.')
+      Alert.alert('Cannot read file', 'Could not read the file. Try saving it from Markor first, then pick it again.')
       return
     }
 
     await addToQueue({
       id: Date.now().toString(),
       filename: mdFile.name,
-      fileUri: mdFile.uri,
+      content,
       siteId,
       images: images.map(img => ({
         uri: img.uri,

@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   Image,
 } from 'react-native'
-import * as FileSystem from 'expo-file-system'
 import { Ionicons } from '@expo/vector-icons'
 import { loadSettings, removeFromQueue } from '../utils/storage'
 import { publishFileToGitLab, publishImageToGitLab } from '../utils/gitlab'
@@ -71,16 +70,13 @@ export default function PushScreen({ navigation, route }) {
 
     // Push the markdown file
     addLog(`Pushing ${item.filename}…`)
-    let content
-    try {
-      content = await FileSystem.readAsStringAsync(item.fileUri)
-    } catch {
-      addLog('✗ Could not read the file. Was it moved or deleted?', false)
+    if (!item.content) {
+      addLog('✗ No content stored. Remove from queue and add the file again.', false)
       setPushing(false)
       return
     }
 
-    const result = await publishFileToGitLab(item.filename, content, settings, siteConfig.path)
+    const result = await publishFileToGitLab(item.filename, item.content, settings, siteConfig.path)
     if (result.ok) {
       addLog(`✓ Post pushed → ${result.filePath}`)
       addLog('Deploy triggered. Site will update in ~2 minutes.')
