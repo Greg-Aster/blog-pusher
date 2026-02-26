@@ -15,7 +15,10 @@ import { loadSettings, saveSettings } from '../utils/storage'
 
 export default function SettingsScreen({ navigation }) {
   const [settings, setSettings] = useState(null)
-  const [tokenVisible, setTokenVisible] = useState(false)
+  const [tokenVisible, setTokenVisible] = useState({
+    gitlab: false,
+    github: false,
+  })
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -30,32 +33,104 @@ export default function SettingsScreen({ navigation }) {
     }))
   }
 
+  function updateProvider(provider, field, value) {
+    setSettings(prev => ({
+      ...prev,
+      providers: {
+        ...prev.providers,
+        [provider]: {
+          ...(prev.providers?.[provider] || {}),
+          [field]: value,
+        },
+      },
+    }))
+  }
+
+  function toggleToken(provider) {
+    setTokenVisible(prev => ({
+      ...prev,
+      [provider]: !prev[provider],
+    }))
+  }
+
+  function copyToken(provider) {
+    const token = settings?.providers?.[provider]?.token || ''
+    if (!token) {
+      Alert.alert('No token', 'Nothing to copy yet.')
+      return
+    }
+    Clipboard.setString(token)
+    Alert.alert('Copied', `${provider === 'github' ? 'GitHub' : 'GitLab'} token copied to clipboard.`)
+  }
+
   async function handleSave() {
     await saveSettings(settings)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
 
-  async function handleTestToken() {
-    if (!settings.token) {
-      Alert.alert('No token', 'Enter your token first.')
+  async function handleTestConnection(provider) {
+    if (provider === 'github') {
+      const github = settings.providers?.github || {}
+      if (!github.token) {
+        Alert.alert('No GitHub token', 'Enter your GitHub token first.')
+        return
+      }
+      if (!github.owner || !github.repo) {
+        Alert.alert('Missing repo', 'Enter GitHub owner and repo first.')
+        return
+      }
+
+      try {
+        const owner = encodeURIComponent(github.owner.trim())
+        const repo = encodeURIComponent(github.repo.trim())
+        const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+          headers: {
+            Authorization: `Bearer ${github.token}`,
+            Accept: 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+          },
+        })
+        if (res.ok) {
+          const data = await res.json()
+          Alert.alert('GitHub works!', `Connected to repo: ${data.full_name}`)
+        } else if (res.status === 401 || res.status === 403) {
+          Alert.alert('Invalid token', 'GitHub rejected this token or scope is insufficient.')
+        } else if (res.status === 404) {
+          Alert.alert('Repo not found', 'Could not find that GitHub repo, or token has no access.')
+        } else {
+          Alert.alert('Error', `GitHub status ${res.status}`)
+        }
+      } catch {
+        Alert.alert('Network error', 'Could not reach GitHub. Are you online?')
+      }
       return
     }
+
+    const gitlab = settings.providers?.gitlab || {}
+    if (!gitlab.token) {
+      Alert.alert('No GitLab token', 'Enter your GitLab token first.')
+      return
+    }
+    if (!gitlab.project) {
+      Alert.alert('No project path', 'Enter your GitLab project path first.')
+      return
+    }
+
     try {
-      const encoded = encodeURIComponent(settings.project)
-      const res = await fetch(
-        `https://gitlab.com/api/v4/projects/${encoded}`,
-        { headers: { 'PRIVATE-TOKEN': settings.token } }
-      )
+      const encoded = encodeURIComponent(gitlab.project)
+      const res = await fetch(`https://gitlab.com/api/v4/projects/${encoded}`, {
+        headers: { 'PRIVATE-TOKEN': gitlab.token },
+      })
       if (res.ok) {
         const data = await res.json()
-        Alert.alert('Token works!', `Connected to project: ${data.name_with_namespace}`)
+        Alert.alert('GitLab works!', `Connected to project: ${data.name_with_namespace}`)
       } else if (res.status === 401) {
         Alert.alert('Invalid token', 'GitLab rejected this token. Check it and try again.')
       } else if (res.status === 404) {
-        Alert.alert('Project not found', `Could not find project "${settings.project}". Check the project path.`)
+        Alert.alert('Project not found', `Could not find project "${gitlab.project}".`)
       } else {
-        Alert.alert('Error', `Status ${res.status}`)
+        Alert.alert('Error', `GitLab status ${res.status}`)
       }
     } catch {
       Alert.alert('Network error', 'Could not reach GitLab. Are you online?')
@@ -63,6 +138,9 @@ export default function SettingsScreen({ navigation }) {
   }
 
   if (!settings) return null
+
+  const gitlab = settings.providers?.gitlab || {}
+  const github = settings.providers?.github || {}
 
   return (
     <View style={styles.container}>
@@ -78,8 +156,6 @@ export default function SettingsScreen({ navigation }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-
-        {/* Token section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>GitLab Access</Text>
 
@@ -87,35 +163,22 @@ export default function SettingsScreen({ navigation }) {
           <View style={styles.tokenRow}>
             <TextInput
               style={[styles.input, { flex: 1 }]}
-              value={settings.token}
-              onChangeText={v => setSettings(prev => ({ ...prev, token: v }))}
+              value={gitlab.token}
+              onChangeText={v => updateProvider('gitlab', 'token', v)}
               placeholder="glpat-xxxxxxxxxxxxxxxxxxxx"
               placeholderTextColor="#aaa"
-              secureTextEntry={!tokenVisible}
+              secureTextEntry={!tokenVisible.gitlab}
               autoCapitalize="none"
               autoCorrect={false}
             />
-            <TouchableOpacity
-              style={styles.eyeBtn}
-              onPress={() => setTokenVisible(v => !v)}
-            >
+            <TouchableOpacity style={styles.eyeBtn} onPress={() => toggleToken('gitlab')}>
               <Ionicons
-                name={tokenVisible ? 'eye-off-outline' : 'eye-outline'}
+                name={tokenVisible.gitlab ? 'eye-off-outline' : 'eye-outline'}
                 size={20}
                 color="#666"
               />
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.eyeBtn}
-              onPress={() => {
-                if (!settings.token) {
-                  Alert.alert('No token', 'Nothing to copy yet.')
-                  return
-                }
-                Clipboard.setString(settings.token)
-                Alert.alert('Copied', 'Token copied to clipboard. Paste it somewhere safe like your Notes app.')
-              }}
-            >
+            <TouchableOpacity style={styles.eyeBtn} onPress={() => copyToken('gitlab')}>
               <Ionicons name="copy-outline" size={20} color="#666" />
             </TouchableOpacity>
           </View>
@@ -123,35 +186,117 @@ export default function SettingsScreen({ navigation }) {
           <TouchableOpacity
             style={styles.linkBtn}
             onPress={() =>
-              Linking.openURL(
-                'https://gitlab.com/-/user_settings/personal_access_tokens'
-              )
+              Linking.openURL('https://gitlab.com/-/user_settings/personal_access_tokens')
             }
           >
             <Ionicons name="open-outline" size={14} color="#4a90d9" />
-            <Text style={styles.linkText}>
-              Create a token on GitLab (needs api scope)
-            </Text>
+            <Text style={styles.linkText}>Create a GitLab token (needs `api` scope)</Text>
           </TouchableOpacity>
 
           <Text style={styles.label}>Project Path</Text>
           <TextInput
             style={styles.input}
-            value={settings.project}
-            onChangeText={v => setSettings(prev => ({ ...prev, project: v }))}
+            value={gitlab.project}
+            onChangeText={v => updateProvider('gitlab', 'project', v)}
             placeholder="username/repo-name"
             placeholderTextColor="#aaa"
             autoCapitalize="none"
             autoCorrect={false}
           />
 
-          <TouchableOpacity style={styles.testBtn} onPress={handleTestToken}>
+          <Text style={styles.label}>Branch</Text>
+          <TextInput
+            style={styles.input}
+            value={gitlab.branch}
+            onChangeText={v => updateProvider('gitlab', 'branch', v)}
+            placeholder="main"
+            placeholderTextColor="#aaa"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <TouchableOpacity style={styles.testBtn} onPress={() => handleTestConnection('gitlab')}>
             <Ionicons name="checkmark-circle-outline" size={16} color="#2d6a4f" />
-            <Text style={styles.testBtnText}>Test Connection</Text>
+            <Text style={styles.testBtnText}>Test GitLab Connection</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Site paths section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>GitHub Access</Text>
+
+          <Text style={styles.label}>Personal Access Token</Text>
+          <View style={styles.tokenRow}>
+            <TextInput
+              style={[styles.input, { flex: 1 }]}
+              value={github.token}
+              onChangeText={v => updateProvider('github', 'token', v)}
+              placeholder="github_pat_xxxxxxxxxxxxxxxxxxxx"
+              placeholderTextColor="#aaa"
+              secureTextEntry={!tokenVisible.github}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <TouchableOpacity style={styles.eyeBtn} onPress={() => toggleToken('github')}>
+              <Ionicons
+                name={tokenVisible.github ? 'eye-off-outline' : 'eye-outline'}
+                size={20}
+                color="#666"
+              />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.eyeBtn} onPress={() => copyToken('github')}>
+              <Ionicons name="copy-outline" size={20} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={styles.linkBtn}
+            onPress={() =>
+              Linking.openURL('https://github.com/settings/personal-access-tokens/new')
+            }
+          >
+            <Ionicons name="open-outline" size={14} color="#4a90d9" />
+            <Text style={styles.linkText}>Create a GitHub token (needs `repo` access)</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.label}>Owner</Text>
+          <TextInput
+            style={styles.input}
+            value={github.owner}
+            onChangeText={v => updateProvider('github', 'owner', v)}
+            placeholder="Greg.Aster"
+            placeholderTextColor="#aaa"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <Text style={styles.label}>Repository</Text>
+          <TextInput
+            style={styles.input}
+            value={github.repo}
+            onChangeText={v => updateProvider('github', 'repo', v)}
+            placeholder="merkin"
+            placeholderTextColor="#aaa"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <Text style={styles.label}>Branch</Text>
+          <TextInput
+            style={styles.input}
+            value={github.branch}
+            onChangeText={v => updateProvider('github', 'branch', v)}
+            placeholder="main"
+            placeholderTextColor="#aaa"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+
+          <TouchableOpacity style={styles.testBtn} onPress={() => handleTestConnection('github')}>
+            <Ionicons name="checkmark-circle-outline" size={16} color="#2d6a4f" />
+            <Text style={styles.testBtnText}>Test GitHub Connection</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Site Content Paths</Text>
           <Text style={styles.hint}>
@@ -174,7 +319,6 @@ export default function SettingsScreen({ navigation }) {
           ))}
         </View>
 
-        {/* Save button */}
         <TouchableOpacity
           style={[styles.saveBtn, saved && styles.saveBtnDone]}
           onPress={handleSave}
@@ -189,7 +333,6 @@ export default function SettingsScreen({ navigation }) {
             {saved ? 'Saved!' : 'Save Settings'}
           </Text>
         </TouchableOpacity>
-
       </ScrollView>
     </View>
   )

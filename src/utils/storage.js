@@ -6,8 +6,19 @@ const KEYS = {
 }
 
 const DEFAULT_SETTINGS = {
-  token: '',
-  project: 'Greg.Aster/merkin',
+  providers: {
+    gitlab: {
+      token: '',
+      project: 'Greg.Aster/merkin',
+      branch: 'main',
+    },
+    github: {
+      token: '',
+      owner: '',
+      repo: '',
+      branch: 'main',
+    },
+  },
   sites: [
     { id: 'temporal', name: 'Temporal Flow', path: 'Temporal-Flow/src/content/posts' },
     { id: 'dndiy', name: 'DNDIY', path: 'DNDIY.github.io/src/content/posts' },
@@ -16,19 +27,51 @@ const DEFAULT_SETTINGS = {
   ],
 }
 
+function normalizeSettings(saved = {}) {
+  const providers = {
+    gitlab: {
+      ...DEFAULT_SETTINGS.providers.gitlab,
+      ...(saved.providers?.gitlab || {}),
+    },
+    github: {
+      ...DEFAULT_SETTINGS.providers.github,
+      ...(saved.providers?.github || {}),
+    },
+  }
+
+  // Backward compatibility with legacy top-level fields.
+  if (!providers.gitlab.token && typeof saved.token === 'string') {
+    providers.gitlab.token = saved.token
+  }
+  if (!providers.gitlab.project && typeof saved.project === 'string') {
+    providers.gitlab.project = saved.project
+  }
+
+  return {
+    ...DEFAULT_SETTINGS,
+    ...saved,
+    providers,
+    // Keep legacy aliases so older screens keep working.
+    token: providers.gitlab.token,
+    project: providers.gitlab.project,
+    sites: Array.isArray(saved.sites) ? saved.sites : DEFAULT_SETTINGS.sites,
+  }
+}
+
 export async function loadSettings() {
   try {
     const raw = await AsyncStorage.getItem(KEYS.SETTINGS)
-    if (!raw) return DEFAULT_SETTINGS
+    if (!raw) return normalizeSettings()
     const saved = JSON.parse(raw)
-    return { ...DEFAULT_SETTINGS, ...saved }
+    return normalizeSettings(saved)
   } catch {
-    return DEFAULT_SETTINGS
+    return normalizeSettings()
   }
 }
 
 export async function saveSettings(settings) {
-  await AsyncStorage.setItem(KEYS.SETTINGS, JSON.stringify(settings))
+  const normalized = normalizeSettings(settings)
+  await AsyncStorage.setItem(KEYS.SETTINGS, JSON.stringify(normalized))
 }
 
 export async function loadQueue() {

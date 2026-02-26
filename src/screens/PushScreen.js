@@ -11,7 +11,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { loadSettings, removeFromQueue } from '../utils/storage'
-import { publishFileToGitLab, publishImageToGitLab } from '../utils/gitlab'
+import { publishFile, publishImage } from '../utils/gitlab'
 
 const SITE_LABELS = {
   temporal: 'Temporal Flow',
@@ -27,10 +27,30 @@ const SITE_COLORS = {
   megameal: '#c0392b',
 }
 
+const PROVIDERS = [
+  { id: 'gitlab', label: 'GitLab', color: '#fc6d26' },
+  { id: 'github', label: 'GitHub', color: '#24292e' },
+]
+
+function validateProviderSettings(provider, settings) {
+  const providers = settings.providers || {}
+  if (provider === 'github') {
+    const github = providers.github || {}
+    if (!github.token) return 'Add your GitHub token in Settings first.'
+    if (!github.owner || !github.repo) return 'Set GitHub owner and repo in Settings first.'
+    return null
+  }
+  const gitlab = providers.gitlab || {}
+  if (!gitlab.token) return 'Add your GitLab token in Settings first.'
+  if (!gitlab.project) return 'Set your GitLab project path in Settings first.'
+  return null
+}
+
 export default function PushScreen({ navigation, route }) {
   const { item } = route.params
   const [pushing, setPushing] = useState(false)
   const [log, setLog] = useState([])
+  const [destination, setDestination] = useState(item.destination || 'gitlab')
 
   function addLog(msg, ok = true) {
     setLog(prev => [...prev, { msg, ok, id: Date.now() + Math.random() }])
@@ -41,8 +61,13 @@ export default function PushScreen({ navigation, route }) {
     setLog([])
 
     const settings = await loadSettings()
-    if (!settings.token) {
-      Alert.alert('No token', 'Add your GitLab token in Settings first.')
+    const providerLabel = PROVIDERS.find(p => p.id === destination)?.label || destination
+    const providerError = validateProviderSettings(destination, settings)
+    if (providerError) {
+      Alert.alert('Destination not configured', providerError, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Open Settings', onPress: () => navigation.navigate('Settings') },
+      ])
       setPushing(false)
       return
     }
@@ -58,8 +83,8 @@ export default function PushScreen({ navigation, route }) {
 
     // Push images first
     for (const img of item.images || []) {
-      addLog(`Uploading image: ${img.filename}…`)
-      const result = await publishImageToGitLab(img, settings, siteConfig)
+      addLog(`Uploading image to ${providerLabel}: ${img.filename}…`)
+      const result = await publishImage(img, settings, siteConfig, destination)
       if (result.ok) {
         addLog(`✓ ${img.filename} → /blog-images/${img.filename}`)
       } else {
@@ -69,17 +94,17 @@ export default function PushScreen({ navigation, route }) {
     }
 
     // Push the markdown file
-    addLog(`Pushing ${item.filename}…`)
+    addLog(`Pushing ${item.filename} to ${providerLabel}…`)
     if (!item.content) {
       addLog('✗ No content stored. Remove from queue and add the file again.', false)
       setPushing(false)
       return
     }
 
-    const result = await publishFileToGitLab(item.filename, item.content, settings, siteConfig.path)
+    const result = await publishFile(item.filename, item.content, settings, siteConfig.path, destination)
     if (result.ok) {
       addLog(`✓ Post pushed → ${result.filePath}`)
-      addLog('Deploy triggered. Site will update in ~2 minutes.')
+      addLog(`✓ Destination: ${providerLabel}`)
     } else {
       addLog(`✗ ${result.error}`, false)
       allOk = false
@@ -90,7 +115,7 @@ export default function PushScreen({ navigation, route }) {
     if (allOk) {
       Alert.alert(
         'Push complete!',
-        'Everything uploaded. Remove from queue?',
+        `Everything uploaded to ${providerLabel}. Remove from queue?`,
         [
           { text: 'Keep in queue', style: 'cancel' },
           {
@@ -107,6 +132,7 @@ export default function PushScreen({ navigation, route }) {
 
   const color = SITE_COLORS[item.siteId] || '#2d6a4f'
   const label = SITE_LABELS[item.siteId] || item.siteId
+  const provider = PROVIDERS.find(p => p.id === destination) || PROVIDERS[0]
 
   return (
     <View style={styles.container}>
@@ -128,6 +154,9 @@ export default function PushScreen({ navigation, route }) {
           <View style={[styles.siteBadge, { backgroundColor: color }]}>
             <Text style={styles.siteBadgeText}>{label}</Text>
           </View>
+          <View style={[styles.providerBadge, { backgroundColor: provider.color }]}>
+            <Text style={styles.providerBadgeText}>{provider.label}</Text>
+          </View>
           <Text style={styles.filename}>{item.filename}</Text>
           {item.images?.length > 0 && (
             <Text style={styles.meta}>
@@ -135,6 +164,32 @@ export default function PushScreen({ navigation, route }) {
             </Text>
           )}
           <Text style={styles.meta}>Added {new Date(item.addedAt).toLocaleDateString()}</Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionLabel}>Destination</Text>
+          <Text style={styles.meta}>Choose where this queued post should be pushed.</Text>
+          <View style={styles.destinationRow}>
+            {PROVIDERS.map(p => (
+              <TouchableOpacity
+                key={p.id}
+                style={[
+                  styles.destinationChip,
+                  destination === p.id && { backgroundColor: p.color, borderColor: p.color },
+                ]}
+                onPress={() => setDestination(p.id)}
+              >
+                <Text
+                  style={[
+                    styles.destinationChipText,
+                    destination === p.id && { color: '#fff' },
+                  ]}
+                >
+                  {p.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
 
         {/* Image thumbnails */}
@@ -216,9 +271,27 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   siteBadgeText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  providerBadge: {
+    alignSelf: 'flex-start',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginBottom: 10,
+  },
+  providerBadgeText: { color: '#fff', fontSize: 11, fontWeight: '600' },
   filename: { fontSize: 17, fontWeight: '700', color: '#1a2e1a', marginBottom: 4 },
   meta: { fontSize: 13, color: '#888', marginTop: 2 },
   sectionLabel: { fontSize: 12, fontWeight: '700', color: '#555', marginBottom: 10, textTransform: 'uppercase' },
+  destinationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  destinationChip: {
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderWidth: 1.5,
+    borderColor: '#ccc',
+    backgroundColor: '#fff',
+  },
+  destinationChipText: { color: '#555', fontWeight: '600', fontSize: 13 },
   thumbWrap: { marginRight: 10, alignItems: 'center', width: 80 },
   thumb: { width: 80, height: 80, borderRadius: 8 },
   thumbName: { fontSize: 10, color: '#888', marginTop: 4, width: 80, textAlign: 'center' },

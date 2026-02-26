@@ -177,7 +177,7 @@ export default function FormatReferenceScreen({ navigation }) {
   async function loadAll() {
     setLoading(true)
     const settings = await loadSettings()
-    const token = settings.token || ''
+    const token = settings.providers?.gitlab?.token || settings.token || ''
 
     // First: load from cache to show something immediately
     const cached = {}
@@ -221,7 +221,7 @@ export default function FormatReferenceScreen({ navigation }) {
   async function handleRefresh() {
     setLoading(true)
     const settings = await loadSettings()
-    await refreshFromGitLab(settings.token || {}, contents)
+    await refreshFromGitLab(settings.providers?.gitlab?.token || settings.token || '', contents)
     setLoading(false)
   }
 
