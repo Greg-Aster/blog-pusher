@@ -10,6 +10,7 @@ import {
 } from 'react-native'
 import * as DocumentPicker from 'expo-document-picker'
 import * as ImagePicker from 'expo-image-picker'
+import * as FileSystem from 'expo-file-system'
 import { Ionicons } from '@expo/vector-icons'
 import { addToQueue } from '../utils/storage'
 
@@ -73,16 +74,20 @@ export default function AddPostScreen({ navigation }) {
       return
     }
 
-    // Read content immediately while we have URI access.
-    // Use fetch() because it handles both file:// and content:// URIs on Android.
+    // Android returns a content:// URI from the file picker. Neither fetch() nor
+    // FileSystem.readAsStringAsync can read those directly. The only reliable method
+    // is FileSystem.copyAsync (uses Android's ContentResolver natively) to copy to
+    // app cache first, then read the copy.
     let content
+    const tempUri = FileSystem.cacheDirectory + 'upload_' + Date.now() + '.md'
     try {
-      const response = await fetch(mdFile.uri)
-      content = await response.text()
-      if (!content && content !== '') throw new Error('empty')
+      await FileSystem.copyAsync({ from: mdFile.uri, to: tempUri })
+      content = await FileSystem.readAsStringAsync(tempUri)
     } catch {
-      Alert.alert('Cannot read file', 'Could not read the file. Try saving it from Markor first, then pick it again.')
+      Alert.alert('Cannot read file', 'Could not read the file. Make sure it is a plain text or markdown file.')
       return
+    } finally {
+      FileSystem.deleteAsync(tempUri, { idempotent: true }).catch(() => {})
     }
 
     await addToQueue({
