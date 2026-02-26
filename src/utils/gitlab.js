@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system'
+import * as FileSystem from 'expo-file-system/legacy'
 
 function slugify(filename) {
   return filename
@@ -72,8 +72,10 @@ export async function publishImageToGitLab(img, settings, siteConfig) {
     base64 = await FileSystem.readAsStringAsync(img.uri, {
       encoding: FileSystem.EncodingType.Base64,
     })
-  } catch {
-    return { ok: false, error: `Could not read image: ${img.filename}` }
+  } catch (err) {
+    const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+    console.error('Failed to read image', { err, image: img })
+    return { ok: false, error: `Could not read image: ${img.filename}. ${detail}` }
   }
 
   // Derive the public images path from the site path

@@ -10,7 +10,7 @@ import {
 } from 'react-native'
 import * as DocumentPicker from 'expo-document-picker'
 import * as ImagePicker from 'expo-image-picker'
-import * as FileSystem from 'expo-file-system'
+import * as FileSystem from 'expo-file-system/legacy'
 import { Ionicons } from '@expo/vector-icons'
 import { addToQueue } from '../utils/storage'
 
@@ -34,14 +34,16 @@ export default function AddPostScreen({ navigation }) {
       })
       if (result.canceled) return
       const asset = result.assets[0]
+      const lowerName = (asset.name || '').toLowerCase()
       // Accept .md and .txt files
-      if (!asset.name.endsWith('.md') && !asset.name.endsWith('.txt') && !asset.name.endsWith('.mdx')) {
+      if (!lowerName.endsWith('.md') && !lowerName.endsWith('.txt') && !lowerName.endsWith('.mdx')) {
         Alert.alert('Wrong file type', 'Please pick a .md or .txt file.')
         return
       }
       setMdFile(asset)
     } catch (err) {
-      Alert.alert('Error', err.message)
+      const message = err instanceof Error ? err.message : String(err)
+      Alert.alert('Error', message)
     }
   }
 
@@ -81,10 +83,27 @@ export default function AddPostScreen({ navigation }) {
     let content
     const tempUri = FileSystem.cacheDirectory + 'upload_' + Date.now() + '.md'
     try {
-      await FileSystem.copyAsync({ from: mdFile.uri, to: tempUri })
-      content = await FileSystem.readAsStringAsync(tempUri)
-    } catch {
-      Alert.alert('Cannot read file', 'Could not read the file. Make sure it is a plain text or markdown file.')
+      const sourceUri = mdFile.uri
+
+      // If the picker already gave us a file:// URI, read directly.
+      if (sourceUri?.startsWith('file://')) {
+        content = await FileSystem.readAsStringAsync(sourceUri)
+      } else {
+        // For content:// URIs on Android, copy into cache first, then read.
+        await FileSystem.copyAsync({ from: sourceUri, to: tempUri })
+        content = await FileSystem.readAsStringAsync(tempUri)
+      }
+    } catch (err) {
+      const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+      console.error('Failed to read markdown file', {
+        err,
+        mdFile,
+        tempUri,
+      })
+      Alert.alert(
+        'Cannot read file',
+        `Could not read "${mdFile.name}".\n\n${detail}`
+      )
       return
     } finally {
       FileSystem.deleteAsync(tempUri, { idempotent: true }).catch(() => {})
