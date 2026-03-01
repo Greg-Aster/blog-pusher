@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  TextInput,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { loadSettings, removeFromQueue } from '../utils/storage'
@@ -51,9 +52,21 @@ export default function PushScreen({ navigation, route }) {
   const [pushing, setPushing] = useState(false)
   const [log, setLog] = useState([])
   const [destination, setDestination] = useState(item.destination || 'gitlab')
+  const [settingsSnapshot, setSettingsSnapshot] = useState(null)
+  const [branchOverride, setBranchOverride] = useState('')
+
+  useEffect(() => {
+    loadSettings().then(setSettingsSnapshot)
+  }, [])
 
   function addLog(msg, ok = true) {
     setLog(prev => [...prev, { msg, ok, id: Date.now() + Math.random() }])
+  }
+
+  function getDefaultBranch(provider, snapshot = settingsSnapshot) {
+    const branch = snapshot?.providers?.[provider]?.branch
+    const trimmed = typeof branch === 'string' ? branch.trim() : ''
+    return trimmed || 'main'
   }
 
   async function handlePush() {
@@ -61,8 +74,22 @@ export default function PushScreen({ navigation, route }) {
     setLog([])
 
     const settings = await loadSettings()
+    const trimmedBranchOverride = branchOverride.trim()
+    const effectiveBranch = trimmedBranchOverride || getDefaultBranch(destination, settings)
+    const settingsForPush = trimmedBranchOverride
+      ? {
+          ...settings,
+          providers: {
+            ...(settings.providers || {}),
+            [destination]: {
+              ...(settings.providers?.[destination] || {}),
+              branch: effectiveBranch,
+            },
+          },
+        }
+      : settings
     const providerLabel = PROVIDERS.find(p => p.id === destination)?.label || destination
-    const providerError = validateProviderSettings(destination, settings)
+    const providerError = validateProviderSettings(destination, settingsForPush)
     if (providerError) {
       Alert.alert('Destination not configured', providerError, [
         { text: 'Cancel', style: 'cancel' },
@@ -72,7 +99,7 @@ export default function PushScreen({ navigation, route }) {
       return
     }
 
-    const siteConfig = settings.sites?.find(s => s.id === item.siteId)
+    const siteConfig = settingsForPush.sites?.find(s => s.id === item.siteId)
     if (!siteConfig) {
       Alert.alert('Site not found', 'Check your site paths in Settings.')
       setPushing(false)
@@ -81,10 +108,12 @@ export default function PushScreen({ navigation, route }) {
 
     let allOk = true
 
+    addLog(`Target branch: ${effectiveBranch}`)
+
     // Push images first
     for (const img of item.images || []) {
       addLog(`Uploading image to ${providerLabel}: ${img.filename}…`)
-      const result = await publishImage(img, settings, siteConfig, destination)
+      const result = await publishImage(img, settingsForPush, siteConfig, destination)
       if (result.ok) {
         addLog(`✓ ${img.filename} → /blog-images/${img.filename}`)
       } else {
@@ -101,10 +130,16 @@ export default function PushScreen({ navigation, route }) {
       return
     }
 
-    const result = await publishFile(item.filename, item.content, settings, siteConfig.path, destination)
+    const result = await publishFile(
+      item.filename,
+      item.content,
+      settingsForPush,
+      siteConfig.path,
+      destination
+    )
     if (result.ok) {
       addLog(`✓ Post pushed → ${result.filePath}`)
-      addLog(`✓ Destination: ${providerLabel}`)
+      addLog(`✓ Destination: ${providerLabel} (${effectiveBranch})`)
     } else {
       addLog(`✗ ${result.error}`, false)
       allOk = false
@@ -133,6 +168,8 @@ export default function PushScreen({ navigation, route }) {
   const color = SITE_COLORS[item.siteId] || '#2d6a4f'
   const label = SITE_LABELS[item.siteId] || item.siteId
   const provider = PROVIDERS.find(p => p.id === destination) || PROVIDERS[0]
+  const defaultBranch = getDefaultBranch(destination)
+  const effectiveBranch = branchOverride.trim() || defaultBranch
 
   return (
     <View style={styles.container}>
@@ -190,6 +227,20 @@ export default function PushScreen({ navigation, route }) {
               </TouchableOpacity>
             ))}
           </View>
+          <Text style={[styles.sectionLabel, styles.branchLabel]}>Branch</Text>
+          <Text style={styles.meta}>
+            Leave blank to use the {provider.label} default from Settings.
+          </Text>
+          <TextInput
+            style={styles.branchInput}
+            value={branchOverride}
+            onChangeText={setBranchOverride}
+            placeholder={`Use Settings default (${defaultBranch})`}
+            placeholderTextColor="#9aa69a"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Text style={styles.branchHint}>This push will target: {effectiveBranch}</Text>
         </View>
 
         {/* Image thumbnails */}
@@ -292,6 +343,24 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   destinationChipText: { color: '#555', fontWeight: '600', fontSize: 13 },
+  branchLabel: { marginTop: 16 },
+  branchInput: {
+    marginTop: 8,
+    backgroundColor: '#f8faf8',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    fontSize: 14,
+    color: '#1a2e1a',
+    borderWidth: 1,
+    borderColor: '#dde8dd',
+  },
+  branchHint: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#6d7d6d',
+    fontWeight: '600',
+  },
   thumbWrap: { marginRight: 10, alignItems: 'center', width: 80 },
   thumb: { width: 80, height: 80, borderRadius: 8 },
   thumbName: { fontSize: 10, color: '#888', marginTop: 4, width: 80, textAlign: 'center' },

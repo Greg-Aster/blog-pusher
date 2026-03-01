@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   View,
   Text,
@@ -21,10 +21,52 @@ const SITES = [
   { id: 'megameal', label: 'MEGAMEAL', color: '#c0392b' },
 ]
 
-export default function AddPostScreen({ navigation }) {
+function looksLikeMarkdown(name = '') {
+  const lowerName = String(name).toLowerCase()
+  return (
+    lowerName.endsWith('.md') ||
+    lowerName.endsWith('.mdx') ||
+    lowerName.endsWith('.txt')
+  )
+}
+
+function normalizeSharedFilename(sharedFile) {
+  const provided = String(sharedFile?.name || '').trim()
+  if (looksLikeMarkdown(provided)) return provided
+  if (provided) return `${provided}.md`
+  return 'shared-note.md'
+}
+
+export default function AddPostScreen({ navigation, route }) {
   const [mdFile, setMdFile] = useState(null)
   const [images, setImages] = useState([])
   const [siteId, setSiteId] = useState('temporal')
+  const [sharedText, setSharedText] = useState('')
+
+  useEffect(() => {
+    const sharedFile = route.params?.sharedFile
+    if (!sharedFile) return
+
+    const normalizedName = normalizeSharedFilename(sharedFile)
+    if (sharedFile.uri) {
+      setMdFile({
+        name: normalizedName,
+        uri: sharedFile.uri,
+        mimeType: sharedFile.mimeType || 'text/markdown',
+      })
+      setSharedText('')
+      return
+    }
+
+    if (sharedFile.text) {
+      setMdFile({
+        name: normalizedName,
+        uri: '',
+        mimeType: sharedFile.mimeType || 'text/plain',
+      })
+      setSharedText(sharedFile.text)
+    }
+  }, [route.params?.sharedAt, route.params?.sharedFile])
 
   async function pickMarkdownFile() {
     try {
@@ -34,13 +76,12 @@ export default function AddPostScreen({ navigation }) {
       })
       if (result.canceled) return
       const asset = result.assets[0]
-      const lowerName = (asset.name || '').toLowerCase()
-      // Accept .md and .txt files
-      if (!lowerName.endsWith('.md') && !lowerName.endsWith('.txt') && !lowerName.endsWith('.mdx')) {
+      if (!looksLikeMarkdown(asset.name)) {
         Alert.alert('Wrong file type', 'Please pick a .md or .txt file.')
         return
       }
       setMdFile(asset)
+      setSharedText('')
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       Alert.alert('Error', message)
@@ -76,22 +117,23 @@ export default function AddPostScreen({ navigation }) {
       return
     }
 
-    // Android returns a content:// URI from the file picker. Neither fetch() nor
-    // FileSystem.readAsStringAsync can read those directly. The only reliable method
-    // is FileSystem.copyAsync (uses Android's ContentResolver natively) to copy to
-    // app cache first, then read the copy.
     let content
+    const isSharedText = !mdFile.uri && !!sharedText
     const tempUri = FileSystem.cacheDirectory + 'upload_' + Date.now() + '.md'
     try {
-      const sourceUri = mdFile.uri
-
-      // If the picker already gave us a file:// URI, read directly.
-      if (sourceUri?.startsWith('file://')) {
-        content = await FileSystem.readAsStringAsync(sourceUri)
+      if (isSharedText) {
+        content = sharedText
       } else {
-        // For content:// URIs on Android, copy into cache first, then read.
-        await FileSystem.copyAsync({ from: sourceUri, to: tempUri })
-        content = await FileSystem.readAsStringAsync(tempUri)
+        const sourceUri = mdFile.uri
+
+        // Android returns a content:// URI from the file picker or share sheet.
+        // Copy into app cache first so Expo can read it reliably.
+        if (sourceUri?.startsWith('file://')) {
+          content = await FileSystem.readAsStringAsync(sourceUri)
+        } else {
+          await FileSystem.copyAsync({ from: sourceUri, to: tempUri })
+          content = await FileSystem.readAsStringAsync(tempUri)
+        }
       }
     } catch (err) {
       const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
@@ -149,7 +191,7 @@ export default function AddPostScreen({ navigation }) {
         <View style={styles.section}>
           <Text style={styles.stepLabel}>Step 1 — Markdown File</Text>
           <Text style={styles.hint}>
-            Write your post in Markor or any editor, save as .md, then pick it here.
+            Pick a file from your phone, or share a markdown note directly into Blog Pusher.
           </Text>
           <TouchableOpacity style={styles.pickBtn} onPress={pickMarkdownFile} activeOpacity={0.7}>
             <Ionicons name="document-text-outline" size={20} color="#2d6a4f" />
@@ -159,7 +201,13 @@ export default function AddPostScreen({ navigation }) {
             {mdFile && <Ionicons name="checkmark-circle" size={20} color="#2d6a4f" />}
           </TouchableOpacity>
           {mdFile && (
-            <TouchableOpacity onPress={() => setMdFile(null)} style={styles.clearBtn}>
+            <TouchableOpacity
+              onPress={() => {
+                setMdFile(null)
+                setSharedText('')
+              }}
+              style={styles.clearBtn}
+            >
               <Text style={styles.clearBtnText}>Clear</Text>
             </TouchableOpacity>
           )}

@@ -38,4 +38,27 @@ yarn-error.*
 
 # generated native folders
 /ios
-/android
+/android/*
+!/android/app
+/android/app/*
+!/android/app/src
+/android/app/src/*
+!/android/app/src/main
+/android/app/src/main/*
+!/android/app/src/main/AndroidManifest.xml
+!/android/app/src/main/java
+/android/app/src/main/java/*
+!/android/app/src/main/java/com
+/android/app/src/main/java/com/*
+!/android/app/src/main/java/com/gregaster
+/android/app/src/main/java/com/gregaster/*
+!/android/app/src/main/java/com/gregaster/blogpusher
+/android/app/src/main/java/com/gregaster/blogpusher/*
+!/android/app/src/main/java/com/gregaster/blogpusher/MainActivity.kt
+!/android/app/src/main/java/com/gregaster/blogpusher/MainApplication.kt
+!/android/app/src/main/java/com/gregaster/blogpusher/ShareIntentModule.kt
+!/android/app/src/main/java/com/gregaster/blogpusher/ShareIntentPackage.kt
+!/android/app/src/main/java/com/gregaster/blogpusher/ShareIntentStore.kt
+/android/.gradle
+/android/build
+/android/app/build
