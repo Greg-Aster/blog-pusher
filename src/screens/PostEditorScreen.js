@@ -12,6 +12,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import Markdown from '@ronradtke/react-native-markdown-display'
+import * as ImagePicker from 'expo-image-picker'
 import { createPostDraft, serializeDraft } from '../utils/frontmatter'
 import { saveDraft, addToQueue, updateQueueItem } from '../utils/storage'
 
@@ -381,40 +382,88 @@ export default function PostEditorScreen({ navigation, route }) {
     updateField('body', newText)
   }
 
-  // ---- Image insert helper ----
-  function handleInsertImage() {
-    Alert.prompt
-      ? Alert.prompt(
-          'Insert Image',
-          'Enter image path or URL:',
-          (path) => {
-            if (!path) return
-            const { start } = bodySelection.current
-            const text = draft.body || ''
-            const imgMd = `![](${path})`
-            const newText = text.slice(0, start) + imgMd + text.slice(start)
-            updateField('body', newText)
-          },
-          'plain-text',
-          '',
-          'url'
-        )
-      : insertImageFallback()
+  // ---- Image picker ----
+  async function handlePickImage() {
+    Alert.alert('Insert Image', 'Choose image source', [
+      {
+        text: 'Photo Library',
+        onPress: () => pickImage(ImagePicker.launchImageLibraryAsync),
+      },
+      {
+        text: 'Camera',
+        onPress: () => pickImage(ImagePicker.launchCameraAsync),
+      },
+      {
+        text: 'URL',
+        onPress: () => insertImageUrl(),
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ])
   }
 
-  function insertImageFallback() {
-    // Android doesn't support Alert.prompt, so use a simpler approach
+  async function pickImage(launcher) {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Camera roll access is needed to insert images.')
+      return
+    }
+
+    const result = await launcher({
+      mediaTypes: ['images'],
+      quality: 0.8,
+      allowsEditing: false,
+    })
+
+    if (result.canceled || !result.assets?.length) return
+
+    const asset = result.assets[0]
+    const uri = asset.uri
+    const filename = asset.fileName || uri.split('/').pop() || 'image.jpg'
+
+    // Add to attached images list for upload later
+    const images = [...(draft.attachedImages || []), { uri, filename }]
+    const imgPath = `/blog-images/${filename}`
+
+    // Insert markdown at cursor
     const { start } = bodySelection.current
     const text = draft.body || ''
-    const imgMd = '![alt](/path/to/image)'
+    const imgMd = `![${filename}](${imgPath})`
     const newText = text.slice(0, start) + imgMd + text.slice(start)
-    updateField('body', newText)
-    const cursorPos = start + 2 // Position cursor inside the alt text brackets
-    setTimeout(() => {
-      bodyRef.current?.setNativeProps?.({
-        selection: { start: cursorPos, end: cursorPos + 3 },
-      })
-    }, 50)
+
+    updateDraft({ body: newText, attachedImages: images })
+  }
+
+  function insertImageUrl() {
+    if (Alert.prompt) {
+      Alert.prompt(
+        'Image URL',
+        'Enter image path or URL:',
+        (path) => {
+          if (!path) return
+          const { start } = bodySelection.current
+          const text = draft.body || ''
+          const imgMd = `![](${path})`
+          const newText = text.slice(0, start) + imgMd + text.slice(start)
+          updateField('body', newText)
+        },
+        'plain-text',
+        '',
+        'url'
+      )
+    } else {
+      // Android fallback — insert template
+      const { start } = bodySelection.current
+      const text = draft.body || ''
+      const imgMd = '![alt](https://)'
+      const newText = text.slice(0, start) + imgMd + text.slice(start)
+      updateField('body', newText)
+      const cursorPos = start + imgMd.length - 1
+      setTimeout(() => {
+        bodyRef.current?.setNativeProps?.({
+          selection: { start: cursorPos, end: cursorPos },
+        })
+      }, 50)
+    }
   }
 
   // ---- Save to queue ----
@@ -534,6 +583,13 @@ export default function PostEditorScreen({ navigation, route }) {
                 <Text style={[styles.toolbarBtnText, action.style]}>{action.label}</Text>
               </TouchableOpacity>
             ))}
+            <View style={styles.toolbarDivider} />
+            <TouchableOpacity
+              style={styles.toolbarBtn}
+              onPress={handlePickImage}
+            >
+              <Ionicons name="image-outline" size={18} color="#2d6a4f" />
+            </TouchableOpacity>
           </ScrollView>
           <TextInput
             ref={bodyRef}
@@ -812,6 +868,70 @@ function MarkdownPreview({ text }) {
 // ---------------------------------------------------------------------------
 // Diff View
 // ---------------------------------------------------------------------------
+/**
+ * LCS-based diff: computes the longest common subsequence of lines,
+ * then emits added/removed/same entries based on the backtrack.
+ */
+function computeLcsDiff(origLines, currLines) {
+  const m = origLines.length
+  const n = currLines.length
+
+  // For very large files, fall back to a simpler approach
+  if (m * n > 500000) {
+    return computeSimpleDiff(origLines, currLines)
+  }
+
+  // Build LCS table
+  const dp = Array.from({ length: m + 1 }, () => new Uint16Array(n + 1))
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (origLines[i - 1] === currLines[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1])
+      }
+    }
+  }
+
+  // Backtrack to produce diff
+  const result = []
+  let i = m, j = n
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && origLines[i - 1] === currLines[j - 1]) {
+      result.push({ type: 'same', text: origLines[i - 1] })
+      i--; j--
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      result.push({ type: 'added', text: currLines[j - 1] })
+      j--
+    } else {
+      result.push({ type: 'removed', text: origLines[i - 1] })
+      i--
+    }
+  }
+
+  return result.reverse()
+}
+
+function computeSimpleDiff(origLines, currLines) {
+  const result = []
+  const maxLen = Math.max(origLines.length, currLines.length)
+  for (let i = 0; i < maxLen; i++) {
+    const o = origLines[i]
+    const c = currLines[i]
+    if (o === undefined) {
+      result.push({ type: 'added', text: c })
+    } else if (c === undefined) {
+      result.push({ type: 'removed', text: o })
+    } else if (o !== c) {
+      result.push({ type: 'removed', text: o })
+      result.push({ type: 'added', text: c })
+    } else {
+      result.push({ type: 'same', text: o })
+    }
+  }
+  return result
+}
+
 function DiffView({ original, current }) {
   if (!original && !current) {
     return <Text style={styles.previewEmpty}>No content to compare.</Text>
@@ -829,29 +949,42 @@ function DiffView({ original, current }) {
 
   const origLines = original.split('\n')
   const currLines = current.split('\n')
-  const maxLen = Math.max(origLines.length, currLines.length)
+  const diffLines = computeLcsDiff(origLines, currLines)
 
-  const changes = { added: 0, removed: 0, unchanged: 0 }
-  const diffLines = []
+  const changes = diffLines.reduce((acc, l) => {
+    acc[l.type === 'same' ? 'unchanged' : l.type]++
+    return acc
+  }, { added: 0, removed: 0, unchanged: 0 })
 
-  for (let i = 0; i < maxLen; i++) {
-    const o = origLines[i]
-    const c = currLines[i]
-    if (o === undefined) {
-      diffLines.push({ type: 'added', text: c })
-      changes.added++
-    } else if (c === undefined) {
-      diffLines.push({ type: 'removed', text: o })
-      changes.removed++
-    } else if (o !== c) {
-      diffLines.push({ type: 'removed', text: o })
-      diffLines.push({ type: 'added', text: c })
-      changes.removed++
-      changes.added++
+  // Collapse long runs of unchanged lines with context
+  const CONTEXT = 3
+  const collapsed = []
+  let skipping = false
+  let skipCount = 0
+
+  for (let i = 0; i < diffLines.length; i++) {
+    const line = diffLines[i]
+    // Check if this unchanged line is near a change
+    const nearChange = diffLines.slice(Math.max(0, i - CONTEXT), i).some(l => l.type !== 'same') ||
+      diffLines.slice(i + 1, i + 1 + CONTEXT).some(l => l.type !== 'same')
+
+    if (line.type === 'same' && !nearChange && diffLines.length > 20) {
+      if (!skipping) {
+        skipping = true
+        skipCount = 0
+      }
+      skipCount++
     } else {
-      diffLines.push({ type: 'same', text: o })
-      changes.unchanged++
+      if (skipping) {
+        collapsed.push({ type: 'skip', count: skipCount })
+        skipping = false
+        skipCount = 0
+      }
+      collapsed.push(line)
     }
+  }
+  if (skipping) {
+    collapsed.push({ type: 'skip', count: skipCount })
   }
 
   return (
@@ -862,19 +995,28 @@ function DiffView({ original, current }) {
         </Text>
       </View>
       <View style={styles.diffBox}>
-        {diffLines.map((line, i) => (
-          <Text
-            key={i}
-            style={[
-              styles.diffLine,
-              line.type === 'added' && styles.diffAdded,
-              line.type === 'removed' && styles.diffRemoved,
-            ]}
-          >
-            {line.type === 'added' ? '+ ' : line.type === 'removed' ? '- ' : '  '}
-            {line.text}
-          </Text>
-        ))}
+        {collapsed.map((line, i) => {
+          if (line.type === 'skip') {
+            return (
+              <Text key={i} style={styles.diffSkip}>
+                {'  '}... {line.count} unchanged lines ...
+              </Text>
+            )
+          }
+          return (
+            <Text
+              key={i}
+              style={[
+                styles.diffLine,
+                line.type === 'added' && styles.diffAdded,
+                line.type === 'removed' && styles.diffRemoved,
+              ]}
+            >
+              {line.type === 'added' ? '+ ' : line.type === 'removed' ? '- ' : '  '}
+              {line.text}
+            </Text>
+          )
+        })}
       </View>
     </View>
   )
@@ -1012,6 +1154,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontFamily: 'monospace',
   },
+  toolbarDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: '#e0e8e0',
+    marginHorizontal: 4,
+  },
 
   // Body editor
   bodyInput: {
@@ -1062,6 +1210,7 @@ const styles = StyleSheet.create({
   diffLine: { color: '#aed8c0', fontSize: 13, fontFamily: 'monospace', lineHeight: 20 },
   diffAdded: { color: '#7ddf90', backgroundColor: 'rgba(125,223,144,0.1)' },
   diffRemoved: { color: '#ff8080', backgroundColor: 'rgba(255,128,128,0.1)' },
+  diffSkip: { color: '#667', fontSize: 12, fontFamily: 'monospace', lineHeight: 20, fontStyle: 'italic', paddingVertical: 2 },
 
   // Bottom bar
   bottomBar: {
