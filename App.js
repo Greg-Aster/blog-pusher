@@ -4,6 +4,7 @@ import { NavigationContainer, createNavigationContainerRef } from '@react-naviga
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import HomeScreen from './src/screens/HomeScreen'
 import AddPostScreen from './src/screens/AddPostScreen'
+import PostEditorScreen from './src/screens/PostEditorScreen'
 import PushScreen from './src/screens/PushScreen'
 import SettingsScreen from './src/screens/SettingsScreen'
 import FormatReferenceScreen from './src/screens/FormatReferenceScreen'
@@ -42,6 +43,7 @@ export default function App() {
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="AddPost" component={AddPostScreen} />
+        <Stack.Screen name="PostEditor" component={PostEditorScreen} />
         <Stack.Screen name="Push" component={PushScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="FormatReference" component={FormatReferenceScreen} />

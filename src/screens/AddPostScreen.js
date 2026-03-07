@@ -151,23 +151,18 @@ export default function AddPostScreen({ navigation, route }) {
       FileSystem.deleteAsync(tempUri, { idempotent: true }).catch(() => {})
     }
 
-    await addToQueue({
-      id: Date.now().toString(),
-      filename: mdFile.name,
-      content,
-      siteId,
-      images: images.map(img => ({
-        uri: img.uri,
-        filename: img.fileName || img.uri.split('/').pop(),
-      })),
-      addedAt: new Date().toISOString(),
-    })
+    const imageList = images.map(img => ({
+      uri: img.uri,
+      filename: img.fileName || img.uri.split('/').pop(),
+    }))
 
-    Alert.alert(
-      'Added to queue',
-      `"${mdFile.name}" is ready to push to ${SITES.find(s => s.id === siteId)?.label}.`,
-      [{ text: 'OK', onPress: () => navigation.goBack() }]
-    )
+    // Open in the editor by default so the user can review/edit before queuing
+    navigation.navigate('PostEditor', {
+      raw: content,
+      filename: mdFile.name,
+      siteId,
+      images: imageList,
+    })
   }
 
   const activeSite = SITES.find(s => s.id === siteId)

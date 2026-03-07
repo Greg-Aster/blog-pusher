@@ -66,7 +66,8 @@ export default function HomeScreen({ navigation }) {
     return (
       <TouchableOpacity
         style={styles.card}
-        onPress={() => navigation.navigate('Push', { item })}
+        onPress={() => navigation.navigate('PostEditor', { queueItem: item })}
+        onLongPress={() => navigation.navigate('Push', { item })}
         activeOpacity={0.7}
       >
         <View style={styles.cardHeader}>
@@ -81,6 +82,13 @@ export default function HomeScreen({ navigation }) {
               </View>
             )}
             <TouchableOpacity
+              onPress={() => navigation.navigate('Push', { item })}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.pushIconBtn}
+            >
+              <Ionicons name="cloud-upload-outline" size={18} color={color} />
+            </TouchableOpacity>
+            <TouchableOpacity
               onPress={() => handleRemove(item.id, item.filename)}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
@@ -93,8 +101,9 @@ export default function HomeScreen({ navigation }) {
         </Text>
         <Text style={styles.cardDate}>Added {formatDate(item.addedAt)}</Text>
         <View style={styles.pushRow}>
-          <Ionicons name="cloud-upload-outline" size={14} color={color} />
-          <Text style={[styles.pushText, { color }]}>Tap to push</Text>
+          <Ionicons name="create-outline" size={14} color={color} />
+          <Text style={[styles.pushText, { color }]}>Tap to edit</Text>
+          <Text style={styles.pushHint}> | Long-press to push</Text>
         </View>
       </TouchableOpacity>
     )
@@ -129,7 +138,7 @@ export default function HomeScreen({ navigation }) {
         activeOpacity={0.8}
       >
         <Ionicons name="add-circle-outline" size={22} color="#fff" />
-        <Text style={styles.addBtnText}>Add Post to Queue</Text>
+        <Text style={styles.addBtnText}>New Post</Text>
       </TouchableOpacity>
 
       {queue.length === 0 ? (
@@ -230,6 +239,8 @@ const styles = StyleSheet.create({
   cardDate: { fontSize: 11, color: '#aaa', marginBottom: 6 },
   pushRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   pushText: { fontSize: 12, fontWeight: '600' },
+  pushHint: { fontSize: 12, color: '#bbb' },
+  pushIconBtn: { marginRight: 2 },
   empty: {
     flex: 1,
     alignItems: 'center',
