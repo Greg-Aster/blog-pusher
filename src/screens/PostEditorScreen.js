@@ -11,6 +11,7 @@ import {
   Platform,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import Markdown from '@ronradtke/react-native-markdown-display'
 import { createPostDraft, serializeDraft } from '../utils/frontmatter'
 import { saveDraft, addToQueue, updateQueueItem } from '../utils/storage'
 
@@ -418,64 +419,72 @@ function MetadataForm({ draft, updateField }) {
 }
 
 // ---------------------------------------------------------------------------
-// Simple Markdown Preview (plain text with basic styling, no external dep)
+// Markdown Preview using @ronradtke/react-native-markdown-display
 // ---------------------------------------------------------------------------
+const markdownStyles = {
+  body: { color: '#1a2e1a', fontSize: 15, lineHeight: 22 },
+  heading1: { fontSize: 26, fontWeight: '700', color: '#1a2e1a', marginTop: 12, marginBottom: 4 },
+  heading2: { fontSize: 22, fontWeight: '700', color: '#1a2e1a', marginTop: 12, marginBottom: 4 },
+  heading3: { fontSize: 19, fontWeight: '700', color: '#1a2e1a', marginTop: 12, marginBottom: 4 },
+  heading4: { fontSize: 17, fontWeight: '700', color: '#1a2e1a', marginTop: 10, marginBottom: 4 },
+  heading5: { fontSize: 15, fontWeight: '700', color: '#1a2e1a', marginTop: 8, marginBottom: 4 },
+  heading6: { fontSize: 14, fontWeight: '700', color: '#1a2e1a', marginTop: 8, marginBottom: 4 },
+  hr: { backgroundColor: '#ddd', height: 1, marginVertical: 12 },
+  blockquote: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#2d6a4f',
+    paddingLeft: 12,
+    marginVertical: 4,
+    backgroundColor: 'transparent',
+  },
+  code_inline: {
+    backgroundColor: '#e8ece8',
+    color: '#2d6a4f',
+    borderRadius: 4,
+    paddingHorizontal: 4,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 14,
+  },
+  code_block: {
+    backgroundColor: '#1a2e1a',
+    color: '#aed8c0',
+    borderRadius: 8,
+    padding: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  fence: {
+    backgroundColor: '#1a2e1a',
+    color: '#aed8c0',
+    borderRadius: 8,
+    padding: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  link: { color: '#2d6a4f', textDecorationLine: 'underline' },
+  strong: { fontWeight: '700' },
+  em: { fontStyle: 'italic' },
+  s: { textDecorationLine: 'line-through' },
+  list_item: { marginVertical: 2 },
+  bullet_list_icon: { color: '#2d6a4f' },
+  ordered_list_icon: { color: '#2d6a4f' },
+  image: { borderRadius: 8 },
+}
+
 function MarkdownPreview({ text }) {
   if (!text) {
     return <Text style={styles.previewEmpty}>Nothing to preview yet.</Text>
   }
 
-  const lines = text.split('\n')
+  // Strip frontmatter from preview — only show the body content
+  const bodyOnly = text.replace(/^---[\t ]*\r?\n[\s\S]*?\r?\n---[\t ]*(?:\r?\n|$)/, '')
+
   return (
-    <View>
-      {lines.map((line, i) => {
-        // Frontmatter fences
-        if (line.trim() === '---') {
-          return <View key={i} style={styles.previewHr} />
-        }
-        // Headings
-        const hMatch = line.match(/^(#{1,6})\s+(.*)/)
-        if (hMatch) {
-          const level = hMatch[1].length
-          const sizes = [26, 22, 19, 17, 15, 14]
-          return (
-            <Text key={i} style={[styles.previewLine, { fontSize: sizes[level - 1], fontWeight: '700', marginTop: 12, marginBottom: 4 }]}>
-              {hMatch[2]}
-            </Text>
-          )
-        }
-        // Code fence
-        if (line.startsWith('```')) {
-          return <View key={i} style={styles.previewCodeFence} />
-        }
-        // Blockquote
-        if (line.startsWith('> ')) {
-          return (
-            <View key={i} style={styles.previewBlockquote}>
-              <Text style={styles.previewBlockquoteText}>{line.slice(2)}</Text>
-            </View>
-          )
-        }
-        // List items
-        if (/^\s*[-*]\s/.test(line)) {
-          return (
-            <Text key={i} style={[styles.previewLine, { paddingLeft: 16 }]}>
-              {'\u2022 '}{line.replace(/^\s*[-*]\s/, '')}
-            </Text>
-          )
-        }
-        // Numbered list
-        if (/^\s*\d+\.\s/.test(line)) {
-          return <Text key={i} style={[styles.previewLine, { paddingLeft: 16 }]}>{line}</Text>
-        }
-        // Empty line
-        if (!line.trim()) {
-          return <View key={i} style={{ height: 8 }} />
-        }
-        // Normal text
-        return <Text key={i} style={styles.previewLine}>{line}</Text>
-      })}
-    </View>
+    <Markdown style={markdownStyles}>
+      {bodyOnly || 'Nothing to preview yet.'}
+    </Markdown>
   )
 }
 
@@ -687,16 +696,6 @@ const styles = StyleSheet.create({
   // Preview
   previewContainer: { padding: 16, paddingBottom: 40 },
   previewEmpty: { fontSize: 15, color: '#aaa', textAlign: 'center', marginTop: 40 },
-  previewLine: { fontSize: 15, color: '#1a2e1a', lineHeight: 22, marginBottom: 2 },
-  previewHr: { height: 1, backgroundColor: '#ddd', marginVertical: 12 },
-  previewCodeFence: { height: 2, backgroundColor: '#e0e0e0', marginVertical: 4 },
-  previewBlockquote: {
-    borderLeftWidth: 3,
-    borderLeftColor: '#2d6a4f',
-    paddingLeft: 12,
-    marginVertical: 4,
-  },
-  previewBlockquoteText: { fontSize: 15, color: '#555', fontStyle: 'italic', lineHeight: 22 },
 
   // Diff
   diffLabel: { fontSize: 14, color: '#555', fontWeight: '600', marginBottom: 8 },
