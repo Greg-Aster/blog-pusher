@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
   View,
   Text,
@@ -48,6 +48,152 @@ const MD_ACTIONS = [
   { label: '---', insert: '\n---\n', wrap: false },
 ]
 
+// Frontmatter templates per site
+const SITE_TEMPLATES = {
+  temporal: {
+    title: '',
+    description: '',
+    published: '',
+    tags: [],
+    category: 'Blog',
+    heroImage: '',
+    draft: true,
+  },
+  dndiy: {
+    title: '',
+    description: '',
+    published: '',
+    tags: [],
+    category: 'Campaign',
+    heroImage: '',
+    draft: true,
+  },
+  travel: {
+    title: '',
+    description: '',
+    published: '',
+    tags: [],
+    category: 'Trail',
+    heroImage: '',
+    draft: true,
+  },
+  megameal: {
+    title: '',
+    description: '',
+    published: '',
+    tags: [],
+    category: 'Recipe',
+    heroImage: '',
+    draft: true,
+  },
+}
+
+// ---------------------------------------------------------------------------
+// Slug helper: title → filename
+// ---------------------------------------------------------------------------
+function slugify(text) {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+}
+
+function generateFilename(title, published) {
+  const slug = slugify(title) || 'untitled'
+  if (published) {
+    const dateStr = published.slice(0, 10) // YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      return `${dateStr}-${slug}.md`
+    }
+  }
+  return `${slug}.md`
+}
+
+// ---------------------------------------------------------------------------
+// Auto-indent and list continuation helpers
+// ---------------------------------------------------------------------------
+function getLineAt(text, pos) {
+  const lineStart = text.lastIndexOf('\n', pos - 1) + 1
+  return text.slice(lineStart, pos)
+}
+
+function handleNewline(text, cursorPos) {
+  const currentLine = getLineAt(text, cursorPos)
+
+  // Unordered list continuation: "- ", "* ", "- [ ] ", "- [x] "
+  const ulMatch = currentLine.match(/^(\s*)([-*])\s(\[[ x]\]\s)?/)
+  if (ulMatch) {
+    const lineContent = currentLine.replace(/^(\s*)([-*])\s(\[[ x]\]\s)?/, '').trim()
+    // If the line is empty (just the prefix), remove the prefix instead of continuing
+    if (!lineContent) {
+      const lineStart = text.lastIndexOf('\n', cursorPos - 1) + 1
+      return {
+        text: text.slice(0, lineStart) + text.slice(cursorPos),
+        cursor: lineStart,
+      }
+    }
+    const prefix = ulMatch[3] ? `${ulMatch[1]}${ulMatch[2]} [ ] ` : `${ulMatch[1]}${ulMatch[2]} `
+    const newText = text.slice(0, cursorPos) + '\n' + prefix + text.slice(cursorPos)
+    return { text: newText, cursor: cursorPos + 1 + prefix.length }
+  }
+
+  // Ordered list continuation: "1. ", "2. ", etc.
+  const olMatch = currentLine.match(/^(\s*)(\d+)\.\s/)
+  if (olMatch) {
+    const lineContent = currentLine.replace(/^(\s*)\d+\.\s/, '').trim()
+    if (!lineContent) {
+      const lineStart = text.lastIndexOf('\n', cursorPos - 1) + 1
+      return {
+        text: text.slice(0, lineStart) + text.slice(cursorPos),
+        cursor: lineStart,
+      }
+    }
+    const nextNum = parseInt(olMatch[2], 10) + 1
+    const prefix = `${olMatch[1]}${nextNum}. `
+    const newText = text.slice(0, cursorPos) + '\n' + prefix + text.slice(cursorPos)
+    return { text: newText, cursor: cursorPos + 1 + prefix.length }
+  }
+
+  // Blockquote continuation
+  const bqMatch = currentLine.match(/^(\s*>+\s?)/)
+  if (bqMatch) {
+    const lineContent = currentLine.slice(bqMatch[0].length).trim()
+    if (!lineContent) {
+      const lineStart = text.lastIndexOf('\n', cursorPos - 1) + 1
+      return {
+        text: text.slice(0, lineStart) + text.slice(cursorPos),
+        cursor: lineStart,
+      }
+    }
+    const prefix = bqMatch[1]
+    const newText = text.slice(0, cursorPos) + '\n' + prefix + text.slice(cursorPos)
+    return { text: newText, cursor: cursorPos + 1 + prefix.length }
+  }
+
+  // Indentation preservation
+  const indentMatch = currentLine.match(/^(\s+)/)
+  if (indentMatch) {
+    const indent = indentMatch[1]
+    const newText = text.slice(0, cursorPos) + '\n' + indent + text.slice(cursorPos)
+    return { text: newText, cursor: cursorPos + 1 + indent.length }
+  }
+
+  return null // No special handling, let default newline happen
+}
+
+// Auto-close pairs
+const CLOSE_PAIRS = {
+  '(': ')',
+  '[': ']',
+  '{': '}',
+  '`': '`',
+  '"': '"',
+  "'": "'",
+}
+
 export default function PostEditorScreen({ navigation, route }) {
   const params = route.params || {}
   const isFromQueue = !!params.queueItem
@@ -80,12 +226,16 @@ export default function PostEditorScreen({ navigation, route }) {
   const bodyRef = useRef(null)
   const bodySelection = useRef({ start: 0, end: 0 })
 
+  // Track if user has made any edits (for unsaved-changes guard)
+  const hasUnsavedChanges = useRef(false)
+
   // Autosave 1.5s after last edit
   const scheduleSave = useCallback((updated) => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
       setSaving(true)
       await saveDraft(updated)
+      hasUnsavedChanges.current = false
       setSaving(false)
     }, 1500)
   }, [])
@@ -96,9 +246,31 @@ export default function PostEditorScreen({ navigation, route }) {
     }
   }, [])
 
+  // Unsaved-changes guard on back navigation
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      if (!hasUnsavedChanges.current) return
+      e.preventDefault()
+      Alert.alert(
+        'Unsaved Changes',
+        'You have unsaved edits. Discard them?',
+        [
+          { text: 'Keep Editing', style: 'cancel' },
+          {
+            text: 'Discard',
+            style: 'destructive',
+            onPress: () => navigation.dispatch(e.data.action),
+          },
+        ]
+      )
+    })
+    return unsubscribe
+  }, [navigation])
+
   function updateDraft(changes) {
     setDraft(prev => {
       const updated = { ...prev, ...changes, dirty: true, updatedAt: new Date().toISOString() }
+      hasUnsavedChanges.current = true
       scheduleSave(updated)
       return updated
     })
@@ -106,6 +278,33 @@ export default function PostEditorScreen({ navigation, route }) {
 
   function updateField(field, value) {
     updateDraft({ [field]: value })
+  }
+
+  // ---- Slug auto-generation ----
+  function handleTitleChange(title) {
+    const changes = { title }
+    // Auto-generate filename from title if filename is default or was previously auto-generated
+    const currentFilename = draft.filename || ''
+    const isDefault = currentFilename === 'new-post.md' || currentFilename === 'untitled.md'
+    const wasAutoGenerated = currentFilename === generateFilename(draft.title, draft.published)
+    if (isDefault || wasAutoGenerated) {
+      changes.filename = generateFilename(title, draft.published)
+    }
+    updateDraft(changes)
+  }
+
+  // ---- Apply site template ----
+  function handleSiteChange(siteId) {
+    const changes = { repoSiteId: siteId }
+    // If this is a new post with no title yet, apply the site template category
+    if (!draft.title && !draft.body) {
+      const template = SITE_TEMPLATES[siteId]
+      if (template) {
+        changes.category = template.category
+        changes.draft = template.draft
+      }
+    }
+    updateDraft(changes)
   }
 
   // ---- Toolbar action ----
@@ -135,9 +334,93 @@ export default function PostEditorScreen({ navigation, route }) {
     }, 50)
   }
 
+  // ---- Smart text handling ----
+  function handleBodyChange(newText) {
+    const oldText = draft.body || ''
+
+    // Detect if user just typed a newline
+    if (newText.length === oldText.length + 1) {
+      const pos = bodySelection.current.start + 1
+      if (newText[pos - 1] === '\n') {
+        const result = handleNewline(oldText, bodySelection.current.start)
+        if (result) {
+          updateField('body', result.text)
+          setTimeout(() => {
+            bodyRef.current?.setNativeProps?.({
+              selection: { start: result.cursor, end: result.cursor },
+            })
+          }, 50)
+          return
+        }
+      }
+    }
+
+    // Detect if user just typed a character that should auto-close
+    if (newText.length === oldText.length + 1) {
+      const insertedPos = bodySelection.current.start
+      const char = newText[insertedPos]
+      if (CLOSE_PAIRS[char]) {
+        const closer = CLOSE_PAIRS[char]
+        // Don't auto-close backtick if we're already inside backticks
+        if (char === '`' && insertedPos > 0 && newText[insertedPos - 1] === '`') {
+          updateField('body', newText)
+          return
+        }
+        const withClose = newText.slice(0, insertedPos + 1) + closer + newText.slice(insertedPos + 1)
+        updateField('body', withClose)
+        const cursorPos = insertedPos + 1
+        setTimeout(() => {
+          bodyRef.current?.setNativeProps?.({
+            selection: { start: cursorPos, end: cursorPos },
+          })
+        }, 50)
+        return
+      }
+    }
+
+    updateField('body', newText)
+  }
+
+  // ---- Image insert helper ----
+  function handleInsertImage() {
+    Alert.prompt
+      ? Alert.prompt(
+          'Insert Image',
+          'Enter image path or URL:',
+          (path) => {
+            if (!path) return
+            const { start } = bodySelection.current
+            const text = draft.body || ''
+            const imgMd = `![](${path})`
+            const newText = text.slice(0, start) + imgMd + text.slice(start)
+            updateField('body', newText)
+          },
+          'plain-text',
+          '',
+          'url'
+        )
+      : insertImageFallback()
+  }
+
+  function insertImageFallback() {
+    // Android doesn't support Alert.prompt, so use a simpler approach
+    const { start } = bodySelection.current
+    const text = draft.body || ''
+    const imgMd = '![alt](/path/to/image)'
+    const newText = text.slice(0, start) + imgMd + text.slice(start)
+    updateField('body', newText)
+    const cursorPos = start + 2 // Position cursor inside the alt text brackets
+    setTimeout(() => {
+      bodyRef.current?.setNativeProps?.({
+        selection: { start: cursorPos, end: cursorPos + 3 },
+      })
+    }, 50)
+  }
+
   // ---- Save to queue ----
   async function handleSaveToQueue() {
     const content = serializeDraft(draft)
+    hasUnsavedChanges.current = false
     if (isFromQueue) {
       await updateQueueItem(params.queueItem.id, {
         content,
@@ -162,6 +445,15 @@ export default function PostEditorScreen({ navigation, route }) {
       ])
     }
   }
+
+  // ---- Word/char count ----
+  const bodyStats = useMemo(() => {
+    const text = draft.body || ''
+    const chars = text.length
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0
+    const lines = text.split('\n').length
+    return { chars, words, lines }
+  }, [draft.body])
 
   // ---- Render tabs ----
   const activeSite = SITES.find(s => s.id === draft.repoSiteId)
@@ -215,7 +507,12 @@ export default function PostEditorScreen({ navigation, route }) {
           contentContainerStyle={styles.tabContentInner}
           keyboardShouldPersistTaps="handled"
         >
-          <MetadataForm draft={draft} updateField={updateField} />
+          <MetadataForm
+            draft={draft}
+            updateField={updateField}
+            onTitleChange={handleTitleChange}
+            onSiteChange={handleSiteChange}
+          />
         </ScrollView>
       )}
 
@@ -242,7 +539,7 @@ export default function PostEditorScreen({ navigation, route }) {
             ref={bodyRef}
             style={styles.bodyInput}
             value={draft.body || ''}
-            onChangeText={v => updateField('body', v)}
+            onChangeText={handleBodyChange}
             onSelectionChange={e => {
               bodySelection.current = e.nativeEvent.selection
             }}
@@ -253,6 +550,12 @@ export default function PostEditorScreen({ navigation, route }) {
             autoCapitalize="sentences"
             autoCorrect
           />
+          {/* Word count bar */}
+          <View style={styles.statsBar}>
+            <Text style={styles.statsText}>
+              {bodyStats.words} words  {bodyStats.chars} chars  {bodyStats.lines} lines
+            </Text>
+          </View>
         </View>
       )}
 
@@ -288,7 +591,7 @@ export default function PostEditorScreen({ navigation, route }) {
 // ---------------------------------------------------------------------------
 // Metadata Form
 // ---------------------------------------------------------------------------
-function MetadataForm({ draft, updateField }) {
+function MetadataForm({ draft, updateField, onTitleChange, onSiteChange }) {
   return (
     <>
       {/* Site selector */}
@@ -301,7 +604,7 @@ function MetadataForm({ draft, updateField }) {
               styles.siteChip,
               draft.repoSiteId === site.id && { backgroundColor: site.color, borderColor: site.color },
             ]}
-            onPress={() => updateField('repoSiteId', site.id)}
+            onPress={() => onSiteChange(site.id)}
           >
             <Text style={[styles.siteChipText, draft.repoSiteId === site.id && { color: '#fff' }]}>
               {site.label}
@@ -310,8 +613,18 @@ function MetadataForm({ draft, updateField }) {
         ))}
       </View>
 
-      {/* Filename */}
-      <Text style={styles.label}>Filename</Text>
+      {/* Filename with slug helper */}
+      <View style={styles.labelRow}>
+        <Text style={styles.label}>Filename</Text>
+        {draft.title ? (
+          <TouchableOpacity
+            onPress={() => updateField('filename', generateFilename(draft.title, draft.published))}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.slugBtn}>Generate from title</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
       <TextInput
         style={styles.input}
         value={draft.filename || ''}
@@ -327,7 +640,7 @@ function MetadataForm({ draft, updateField }) {
       <TextInput
         style={styles.titleInput}
         value={draft.title || ''}
-        onChangeText={v => updateField('title', v)}
+        onChangeText={onTitleChange}
         placeholder="Post title"
         placeholderTextColor="#aaa"
         autoCapitalize="words"
@@ -345,7 +658,15 @@ function MetadataForm({ draft, updateField }) {
       />
 
       {/* Published date */}
-      <Text style={styles.label}>Published Date</Text>
+      <View style={styles.labelRow}>
+        <Text style={styles.label}>Published Date</Text>
+        <TouchableOpacity
+          onPress={() => updateField('published', new Date().toISOString())}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={styles.slugBtn}>Now</Text>
+        </TouchableOpacity>
+      </View>
       <TextInput
         style={styles.input}
         value={draft.published || ''}
@@ -489,7 +810,7 @@ function MarkdownPreview({ text }) {
 }
 
 // ---------------------------------------------------------------------------
-// Simple Diff View
+// Diff View
 // ---------------------------------------------------------------------------
 function DiffView({ original, current }) {
   if (!original && !current) {
@@ -609,6 +930,17 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     marginTop: 14,
   },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  slugBtn: {
+    fontSize: 12,
+    color: '#2d6a4f',
+    fontWeight: '600',
+    marginTop: 14,
+  },
   siteRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   siteChip: {
     borderRadius: 20,
@@ -691,6 +1023,21 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     textAlignVertical: 'top',
+  },
+
+  // Stats bar (word count)
+  statsBar: {
+    backgroundColor: '#f8f9f8',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e8e0',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+  },
+  statsText: {
+    fontSize: 11,
+    color: '#999',
+    fontFamily: 'monospace',
+    textAlign: 'right',
   },
 
   // Preview
