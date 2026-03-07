@@ -237,6 +237,7 @@ export default function PostEditorScreen({ navigation, route }) {
       setSaving(true)
       await saveDraft(updated)
       hasUnsavedChanges.current = false
+      setDraft(prev => prev.dirty ? { ...prev, dirty: false } : prev)
       setSaving(false)
     }, 1500)
   }, [])
@@ -506,7 +507,8 @@ export default function PostEditorScreen({ navigation, route }) {
 
   // ---- Render tabs ----
   const activeSite = SITES.find(s => s.id === draft.repoSiteId)
-  const serialized = serializeDraft(draft)
+  // Only serialize for diff/queue — preview uses draft.body directly
+  const serialized = useMemo(() => serializeDraft(draft), [draft])
 
   return (
     <KeyboardAvoidingView
@@ -617,7 +619,7 @@ export default function PostEditorScreen({ navigation, route }) {
 
       {activeTab === 'preview' && (
         <ScrollView style={styles.tabContent} contentContainerStyle={styles.previewContainer}>
-          <MarkdownPreview text={serialized} />
+          <MarkdownPreview body={draft.body} title={draft.title} />
         </ScrollView>
       )}
 
@@ -850,17 +852,17 @@ const markdownStyles = {
   image: { borderRadius: 8 },
 }
 
-function MarkdownPreview({ text }) {
-  if (!text) {
+function MarkdownPreview({ body, title }) {
+  if (!body && !title) {
     return <Text style={styles.previewEmpty}>Nothing to preview yet.</Text>
   }
 
-  // Strip frontmatter from preview — only show the body content
-  const bodyOnly = text.replace(/^---[\t ]*\r?\n[\s\S]*?\r?\n---[\t ]*(?:\r?\n|$)/, '')
+  // Render body directly from draft state — no serialize+strip needed
+  const content = title ? `# ${title}\n\n${body || ''}` : (body || '')
 
   return (
     <Markdown style={markdownStyles}>
-      {bodyOnly || 'Nothing to preview yet.'}
+      {content || 'Nothing to preview yet.'}
     </Markdown>
   )
 }
