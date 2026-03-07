@@ -9,6 +9,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import Markdown from '@ronradtke/react-native-markdown-display'
@@ -113,6 +114,69 @@ function generateFilename(title, published) {
   return `${slug}.md`
 }
 
+function formatDateOnly(value = new Date()) {
+  return new Date(value).toISOString().slice(0, 10)
+}
+
+function splitFilename(name = '') {
+  const cleaned = String(name || '').trim()
+  const match = cleaned.match(/^(.*?)(\.[^.]+)?$/)
+  return {
+    stem: match?.[1] || 'image',
+    extension: (match?.[2] || '.jpg').toLowerCase(),
+  }
+}
+
+function sanitizeImageFilename(name = '') {
+  const { stem, extension } = splitFilename(name)
+  const safeStem = slugify(stem) || 'image'
+  const safeExt = /^\.[a-z0-9]+$/i.test(extension) ? extension : '.jpg'
+  return `${safeStem}${safeExt}`
+}
+
+function formatImageAlt(filename = '') {
+  const { stem } = splitFilename(filename)
+  const alt = String(stem || '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return alt || 'Image'
+}
+
+function ensureUniqueImageFilename(filename, images = []) {
+  const lower = filename.toLowerCase()
+  const taken = new Set(images.map(image => String(image.filename || '').toLowerCase()))
+  if (!taken.has(lower)) return filename
+
+  const { stem, extension } = splitFilename(filename)
+  let index = 2
+  while (taken.has(`${stem}-${index}${extension}`.toLowerCase())) {
+    index += 1
+  }
+  return `${stem}-${index}${extension}`
+}
+
+function normalizeAttachedImages(images = []) {
+  const normalized = []
+  for (const [index, image] of images.entries()) {
+    const sourceName = image?.filename || image?.publicPath?.split('/').pop() || `image-${index + 1}.jpg`
+    const filename = ensureUniqueImageFilename(sanitizeImageFilename(sourceName), normalized)
+    normalized.push({
+      id: image?.id || `${filename}-${index}`,
+      uri: image?.uri || '',
+      filename,
+      alt: image?.alt !== undefined ? String(image.alt) : formatImageAlt(filename),
+      publicPath: image?.publicPath || `/blog-images/${filename}`,
+    })
+  }
+  return normalized
+}
+
+function buildImageMarkdown(image) {
+  const alt = String(image?.alt || '').trim() || formatImageAlt(image?.filename)
+  return `![${alt}](${image?.publicPath || `/blog-images/${image?.filename}`})`
+}
+
 // ---------------------------------------------------------------------------
 // Auto-indent and list continuation helpers
 // ---------------------------------------------------------------------------
@@ -201,9 +265,11 @@ export default function PostEditorScreen({ navigation, route }) {
 
   // Build initial draft from params
   const [draft, setDraft] = useState(() => {
-    if (params.draft) return params.draft
-    if (params.queueItem) {
-      return createPostDraft({
+    let initialDraft
+    if (params.draft) {
+      initialDraft = params.draft
+    } else if (params.queueItem) {
+      initialDraft = createPostDraft({
         raw: params.queueItem.content || '',
         filename: params.queueItem.filename,
         siteId: params.queueItem.siteId,
@@ -217,9 +283,8 @@ export default function PostEditorScreen({ navigation, route }) {
           branch: params.queueItem.remoteBranch,
         } : null,
       })
-    }
-    if (params.raw !== undefined) {
-      return createPostDraft({
+    } else if (params.raw !== undefined) {
+      initialDraft = createPostDraft({
         raw: params.raw,
         filename: params.filename,
         siteId: params.siteId,
@@ -227,8 +292,13 @@ export default function PostEditorScreen({ navigation, route }) {
         destination: params.destination,
         remoteFile: params.remoteFile,
       })
+    } else {
+      initialDraft = createPostDraft({ raw: '', filename: 'new-post.md', siteId: 'temporal' })
     }
-    return createPostDraft({ raw: '', filename: 'new-post.md', siteId: 'temporal' })
+    return {
+      ...initialDraft,
+      attachedImages: normalizeAttachedImages(initialDraft.attachedImages),
+    }
   })
 
   const [activeTab, setActiveTab] = useState('meta')
@@ -292,9 +362,58 @@ export default function PostEditorScreen({ navigation, route }) {
     updateDraft({ [field]: value })
   }
 
+  function moveCursor(position) {
+    setTimeout(() => {
+      bodyRef.current?.setNativeProps?.({
+        selection: { start: position, end: position },
+      })
+    }, 50)
+  }
+
+  function insertBodySnippet(snippet, cursorOffset = snippet.length) {
+    const { start, end } = bodySelection.current
+    const text = draft.body || ''
+    const nextBody = text.slice(0, start) + snippet + text.slice(end)
+    updateField('body', nextBody)
+    moveCursor(start + cursorOffset)
+  }
+
+  function updateAttachedImage(id, changes) {
+    const nextImages = normalizeAttachedImages(
+      (draft.attachedImages || []).map(image => (
+        image.id === id ? { ...image, ...changes } : image
+      ))
+    )
+    updateDraft({ attachedImages: nextImages })
+  }
+
+  function removeAttachedImage(id) {
+    const removed = (draft.attachedImages || []).find(image => image.id === id)
+    const nextImages = (draft.attachedImages || []).filter(image => image.id !== id)
+    const changes = { attachedImages: nextImages }
+    if (removed?.publicPath && draft.heroImage === removed.publicPath) {
+      changes.heroImage = ''
+    }
+    updateDraft(changes)
+  }
+
+  function insertAttachedImage(image) {
+    const text = draft.body || ''
+    const { start, end } = bodySelection.current
+    const markdown = buildImageMarkdown(image)
+    const prefix = start > 0 && text[start - 1] !== '\n' ? '\n\n' : ''
+    const suffix = text[end] && text[end] !== '\n' ? '\n\n' : '\n'
+    const snippet = `${prefix}${markdown}${suffix}`
+    insertBodySnippet(snippet)
+  }
+
   // ---- Slug auto-generation ----
   function handleTitleChange(title) {
     const changes = { title }
+    if (draft.remotePath) {
+      updateDraft(changes)
+      return
+    }
     // Auto-generate filename from title if filename is default or was previously auto-generated
     const currentFilename = draft.filename || ''
     const isDefault = currentFilename === 'new-post.md' || currentFilename === 'untitled.md'
@@ -413,9 +532,17 @@ export default function PostEditorScreen({ navigation, route }) {
   }
 
   async function pickImage(launcher) {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    const permission = launcher === ImagePicker.launchCameraAsync
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync()
+    const { status } = permission
     if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Camera roll access is needed to insert images.')
+      Alert.alert(
+        'Permission Required',
+        launcher === ImagePicker.launchCameraAsync
+          ? 'Camera access is needed to take a photo.'
+          : 'Photo library access is needed to insert images.'
+      )
       return
     }
 
@@ -423,25 +550,44 @@ export default function PostEditorScreen({ navigation, route }) {
       mediaTypes: ['images'],
       quality: 0.8,
       allowsEditing: false,
+      allowsMultipleSelection: launcher === ImagePicker.launchImageLibraryAsync,
     })
 
     if (result.canceled || !result.assets?.length) return
 
-    const asset = result.assets[0]
-    const uri = asset.uri
-    const filename = asset.fileName || uri.split('/').pop() || 'image.jpg'
+    const existingImages = normalizeAttachedImages(draft.attachedImages || [])
+    const nextImages = [...existingImages]
+    const addedImages = result.assets.map((asset, index) => {
+      const sourceName = asset.fileName || asset.uri?.split('/').pop() || `image-${Date.now()}-${index + 1}.jpg`
+      const filename = ensureUniqueImageFilename(sanitizeImageFilename(sourceName), nextImages)
+      const image = {
+        id: `${filename}-${Date.now()}-${index}`,
+        uri: asset.uri,
+        filename,
+        alt: formatImageAlt(filename),
+        publicPath: `/blog-images/${filename}`,
+      }
+      nextImages.push(image)
+      return image
+    })
 
-    // Add to attached images list for upload later
-    const images = [...(draft.attachedImages || []), { uri, filename }]
-    const imgPath = `/blog-images/${filename}`
+    const snippet = addedImages
+      .map(image => buildImageMarkdown(image))
+      .join('\n\n')
 
-    // Insert markdown at cursor
-    const { start } = bodySelection.current
+    const heroImage = draft.heroImage || addedImages[0]?.publicPath || ''
     const text = draft.body || ''
-    const imgMd = `![${filename}](${imgPath})`
-    const newText = text.slice(0, start) + imgMd + text.slice(start)
+    const { start, end } = bodySelection.current
+    const prefix = start > 0 && text[start - 1] !== '\n' ? '\n\n' : ''
+    const suffix = text[end] && text[end] !== '\n' ? '\n\n' : '\n'
+    const nextBody = text.slice(0, start) + prefix + snippet + suffix + text.slice(end)
 
-    updateDraft({ body: newText, attachedImages: images })
+    updateDraft({
+      body: nextBody,
+      attachedImages: nextImages,
+      heroImage,
+    })
+    moveCursor(start + prefix.length + snippet.length + suffix.length)
   }
 
   function insertImageUrl() {
@@ -469,11 +615,7 @@ export default function PostEditorScreen({ navigation, route }) {
       const newText = text.slice(0, start) + imgMd + text.slice(start)
       updateField('body', newText)
       const cursorPos = start + imgMd.length - 1
-      setTimeout(() => {
-        bodyRef.current?.setNativeProps?.({
-          selection: { start: cursorPos, end: cursorPos },
-        })
-      }, 50)
+      moveCursor(cursorPos)
     }
   }
 
@@ -617,6 +759,15 @@ export default function PostEditorScreen({ navigation, route }) {
               <Ionicons name="image-outline" size={18} color="#2d6a4f" />
             </TouchableOpacity>
           </ScrollView>
+          <ImageManager
+            images={draft.attachedImages || []}
+            heroImage={draft.heroImage}
+            onAddImage={handlePickImage}
+            onInsertImage={insertAttachedImage}
+            onSetHeroImage={image => updateField('heroImage', image.publicPath)}
+            onUpdateImage={updateAttachedImage}
+            onRemoveImage={removeAttachedImage}
+          />
           <TextInput
             ref={bodyRef}
             style={styles.bodyInput}
@@ -755,7 +906,7 @@ function MetadataForm({ draft, updateField, onTitleChange, onSiteChange }) {
       <View style={styles.labelRow}>
         <Text style={styles.label}>Published Date</Text>
         <TouchableOpacity
-          onPress={() => updateField('published', new Date().toISOString())}
+          onPress={() => updateField('published', formatDateOnly())}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
           <Text style={styles.slugBtn}>Now</Text>
@@ -765,7 +916,7 @@ function MetadataForm({ draft, updateField, onTitleChange, onSiteChange }) {
         style={styles.input}
         value={draft.published || ''}
         onChangeText={v => updateField('published', v)}
-        placeholder="2026-03-07T12:00:00Z"
+        placeholder="2026-03-07"
         placeholderTextColor="#aaa"
         autoCapitalize="none"
       />
@@ -830,6 +981,110 @@ function MetadataForm({ draft, updateField, onTitleChange, onSiteChange }) {
         </View>
       )}
     </>
+  )
+}
+
+function ImageManager({
+  images,
+  heroImage,
+  onAddImage,
+  onInsertImage,
+  onSetHeroImage,
+  onUpdateImage,
+  onRemoveImage,
+}) {
+  return (
+    <View style={styles.imageManager}>
+      <View style={styles.imageManagerHeader}>
+        <View>
+          <Text style={styles.imageManagerTitle}>Photos</Text>
+          <Text style={styles.imageManagerHint}>
+            Insert now, then upload with the post to this site&apos;s `public/blog-images` folder.
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.imageAddBtn} onPress={onAddImage}>
+          <Ionicons name="add-circle-outline" size={18} color="#fff" />
+          <Text style={styles.imageAddBtnText}>Add Photo</Text>
+        </TouchableOpacity>
+      </View>
+
+      {images.length === 0 ? (
+        <View style={styles.imageEmptyState}>
+          <Ionicons name="images-outline" size={18} color="#91a197" />
+          <Text style={styles.imageEmptyText}>
+            No photos attached yet. Added photos will insert as `/blog-images/...` and upload with the queue item.
+          </Text>
+        </View>
+      ) : (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.imageCardRow}
+        >
+          {images.map(image => {
+            const isHero = heroImage === image.publicPath
+            return (
+              <View key={image.id} style={styles.imageCard}>
+                {image.uri ? (
+                  <Image source={{ uri: image.uri }} style={styles.imageThumb} />
+                ) : (
+                  <View style={[styles.imageThumb, styles.imageThumbFallback]}>
+                    <Ionicons name="image-outline" size={24} color="#8fa196" />
+                  </View>
+                )}
+
+                <View style={styles.imageMetaRow}>
+                  <Text style={styles.imageFilename} numberOfLines={1}>
+                    {image.filename}
+                  </Text>
+                  {isHero ? (
+                    <View style={styles.heroBadge}>
+                      <Text style={styles.heroBadgeText}>Hero</Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                <Text style={styles.imagePublicPath} numberOfLines={1}>
+                  {image.publicPath}
+                </Text>
+
+                <TextInput
+                  style={styles.imageAltInput}
+                  value={image.alt}
+                  onChangeText={value => onUpdateImage(image.id, { alt: value })}
+                  placeholder="Alt text"
+                  placeholderTextColor="#8ba097"
+                />
+
+                <View style={styles.imageActionRow}>
+                  <TouchableOpacity
+                    style={styles.imageActionBtn}
+                    onPress={() => onInsertImage(image)}
+                  >
+                    <Ionicons name="enter-outline" size={15} color="#2d6a4f" />
+                    <Text style={styles.imageActionText}>Insert</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.imageActionBtn}
+                    onPress={() => onSetHeroImage(image)}
+                  >
+                    <Ionicons name="image-outline" size={15} color="#8b5e34" />
+                    <Text style={styles.imageActionText}>Set Hero</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.imageActionBtn}
+                    onPress={() => onRemoveImage(image.id)}
+                  >
+                    <Ionicons name="trash-outline" size={15} color="#b24b4b" />
+                    <Text style={styles.imageActionText}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )
+          })}
+        </ScrollView>
+      )}
+    </View>
   )
 }
 
@@ -1211,6 +1466,135 @@ const styles = StyleSheet.create({
     height: 20,
     backgroundColor: '#e0e8e0',
     marginHorizontal: 4,
+  },
+  imageManager: {
+    backgroundColor: '#f7f3ea',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e3ddcf',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  imageManagerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  imageManagerTitle: {
+    color: '#2b2318',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  imageManagerHint: {
+    color: '#6e6558',
+    fontSize: 12,
+    lineHeight: 18,
+    maxWidth: 220,
+  },
+  imageAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#2d6a4f',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  imageAddBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  imageEmptyState: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e6dfd0',
+    padding: 12,
+  },
+  imageEmptyText: {
+    flex: 1,
+    color: '#7d867e',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  imageCardRow: { gap: 10, paddingRight: 12 },
+  imageCard: {
+    width: 248,
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e4ddd0',
+    padding: 10,
+  },
+  imageThumb: {
+    width: '100%',
+    height: 132,
+    borderRadius: 10,
+    backgroundColor: '#ecf1ec',
+    marginBottom: 10,
+  },
+  imageThumbFallback: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 4,
+  },
+  imageFilename: {
+    flex: 1,
+    color: '#1a2e1a',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  heroBadge: {
+    backgroundColor: '#efe7d8',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  heroBadgeText: {
+    color: '#8b5e34',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  imagePublicPath: {
+    color: '#79867f',
+    fontSize: 11,
+    marginBottom: 8,
+  },
+  imageAltInput: {
+    backgroundColor: '#f7faf7',
+    borderWidth: 1,
+    borderColor: '#dde7de',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    fontSize: 13,
+    color: '#1a2e1a',
+    marginBottom: 10,
+  },
+  imageActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  imageActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+  },
+  imageActionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#4c5a52',
   },
 
   // Body editor

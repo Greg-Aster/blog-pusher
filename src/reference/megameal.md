@@ -2,9 +2,9 @@
 
 ## Site Info
 - **URL:** megameal.org
-- **Repo path:** `MEGAMEAL/src/content/posts/your-slug.md` (or `.mdx`)
+- **Repo path:** `apps/megameal/src/content/posts/your-slug.md` (or `.mdx`)
 - **File format:** `.md` or `.mdx` (MDX allows JSX/Svelte components inside markdown)
-- **Images:** Place in `MEGAMEAL/public/blog-images/` — reference as `/blog-images/filename.jpg`
+- **Images:** Place in `apps/megameal/public/blog-images/` — reference as `/blog-images/filename.jpg`
 
 ## Schema Notes
 - `bannerType` can be: `image`, `video`, `timeline`, or `assistant`
@@ -67,8 +67,8 @@ You are editing a blog post for my MEGAMEAL multimedia website. Please:
 
 **SITE:** MEGAMEAL (megameal.org)
 **FILE FORMAT:** .md or .mdx (MDX allows JSX/Svelte components inside markdown)
-**FILE LOCATION IN REPO:** `MEGAMEAL/src/content/posts/your-slug.md` (or .mdx)
-**IMAGES:** Place in `MEGAMEAL/public/blog-images/` — reference as `/blog-images/filename.jpg`
+**FILE LOCATION IN REPO:** `apps/megameal/src/content/posts/your-slug.md` (or .mdx)
+**IMAGES:** Place in `apps/megameal/public/blog-images/` — reference as `/blog-images/filename.jpg`
 
 **SCHEMA NOTES:**
 - bannerType can be: "image", "video", "timeline", or "assistant"

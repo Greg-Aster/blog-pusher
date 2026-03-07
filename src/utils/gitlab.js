@@ -134,11 +134,24 @@ function gitlabErrorMessage(status, data) {
 function isGitHubAlreadyExists(status, data) {
   if (status !== 422) return false
   const message = getDataMessage(data).toLowerCase()
-  if (message.includes('already exists') || message.includes('sha')) return true
+  if (message.includes('already exists')) return true
   if (Array.isArray(data?.errors)) {
     return data.errors.some(err => {
       const errMsg = `${err?.code || ''} ${err?.message || ''}`.toLowerCase()
       return errMsg.includes('already exists') || errMsg.includes('already_exists')
+    })
+  }
+  return false
+}
+
+function isGitHubMissingSha(status, data) {
+  if (status !== 422) return false
+  const message = getDataMessage(data).toLowerCase()
+  if (message.includes('sha')) return true
+  if (Array.isArray(data?.errors)) {
+    return data.errors.some(err => {
+      const errMsg = `${err?.code || ''} ${err?.message || ''}`.toLowerCase()
+      return errMsg.includes('sha')
     })
   }
   return false
@@ -152,6 +165,9 @@ function githubErrorMessage(status, data) {
   }
   if (status === 404) {
     return 'GitHub repo not found, or token lacks repo access. Check owner/repo in Settings.'
+  }
+  if (isGitHubMissingSha(status, data)) {
+    return 'GitHub rejected the update because the current file version could not be confirmed. Reload the post from the repo and try again.'
   }
   if (isGitHubAlreadyExists(status, data)) {
     return 'A file with this name already exists. Rename the file slightly and try again.'
@@ -168,11 +184,31 @@ function getPostFilePath(filename, sitePath, extensionOverride) {
   return { slug, filePath: `${normalizedSitePath}/${slug}${extension}` }
 }
 
-function getImagePath(siteConfig, filename) {
-  const sitePath = String(siteConfig?.path || '').trim().replace(/^\/+|\/+$/g, '')
-  const siteRoot = sitePath.split('/')[0]
+function getSiteRoot(sitePath) {
+  const normalized = String(sitePath || '').trim().replace(/^\/+|\/+$/g, '')
+  if (!normalized) return ''
+
+  const srcIndex = normalized.indexOf('/src/')
+  if (srcIndex > 0) return normalized.slice(0, srcIndex)
+
+  const contentIndex = normalized.indexOf('/content/')
+  if (contentIndex > 0) return normalized.slice(0, contentIndex)
+
+  const parts = normalized.split('/')
+  if (parts.length > 2) return parts.slice(0, -2).join('/')
+  return parts[0] || ''
+}
+
+export function getImageUploadDirectory(sitePath) {
+  const siteRoot = getSiteRoot(sitePath)
   if (!siteRoot) return null
-  return `${siteRoot}/public/blog-images/${filename}`
+  return `${siteRoot}/public/blog-images`
+}
+
+function getImagePath(siteConfig, filename) {
+  const imageDir = getImageUploadDirectory(siteConfig?.path)
+  if (!imageDir) return null
+  return `${imageDir}/${filename}`
 }
 
 async function readImageBase64(img) {
@@ -193,15 +229,37 @@ function getRemoteExtension(remotePath) {
 }
 
 function getPublishTarget(filename, sitePath, options = {}) {
+  if (options.remotePath) {
+    const remotePath = String(options.remotePath).trim().replace(/^\/+|\/+$/g, '')
+    const slug = slugify(filename || remotePath.split('/').pop() || 'post')
+    return {
+      slug,
+      filePath: remotePath,
+      updateExisting: true,
+    }
+  }
+
   const extension = options.remotePath ? getRemoteExtension(options.remotePath) : undefined
   const post = getPostFilePath(filename, sitePath, extension)
   if (post.error) return post
-  const isSameRemotePath = !!options.remotePath && options.remotePath === post.filePath
   return {
     ...post,
-    filePath: isSameRemotePath ? options.remotePath : post.filePath,
-    updateExisting: isSameRemotePath,
+    updateExisting: false,
   }
+}
+
+async function fetchGitHubSourceSha(settings, filePath) {
+  const github = getProviderConfig(settings, 'github')
+  if (!github.token || !github.owner || !github.repo) return null
+
+  const owner = encodeURIComponent(github.owner.trim())
+  const repo = encodeURIComponent(github.repo.trim())
+  const path = encodePath(filePath)
+  const ref = encodeURIComponent(github.branch || 'main')
+  const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${ref}`
+  const res = await githubRequest('GET', url, github.token)
+  if (!res.ok) return null
+  return res.data?.sha || null
 }
 
 export async function publishFileToGitLab(filename, content, settings, sitePath, options = {}) {
@@ -285,12 +343,27 @@ export async function publishFileToGitHub(filename, content, settings, sitePath,
   const repo = encodeURIComponent(github.repo.trim())
   const encodedPath = encodePath(post.filePath)
   const url = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}`
-  const res = await githubRequest('PUT', url, github.token, {
+  const sourceSha = post.updateExisting
+    ? (options.sourceSha || await fetchGitHubSourceSha(settings, post.filePath))
+    : null
+
+  const requestBody = {
     message: `${post.updateExisting ? 'update' : 'add'}: ${post.slug}`,
     content: utf8ToBase64(content),
     branch: github.branch || 'main',
-    ...(post.updateExisting && options.sourceSha ? { sha: options.sourceSha } : {}),
-  })
+    ...(post.updateExisting && sourceSha ? { sha: sourceSha } : {}),
+  }
+
+  let res = await githubRequest('PUT', url, github.token, requestBody)
+  if (!res.ok && post.updateExisting && (res.status === 409 || isGitHubMissingSha(res.status, res.data))) {
+    const refreshedSha = await fetchGitHubSourceSha(settings, post.filePath)
+    if (refreshedSha && refreshedSha !== sourceSha) {
+      res = await githubRequest('PUT', url, github.token, {
+        ...requestBody,
+        sha: refreshedSha,
+      })
+    }
+  }
 
   if (res.ok) {
     return {

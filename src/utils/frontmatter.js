@@ -6,6 +6,7 @@
  */
 
 const FRONTMATTER_RE = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/
+const YAML_DATE_KEYS = new Set(['published', 'updated', 'date', 'pubDatetime', 'modDatetime'])
 
 /**
  * Parse a raw Markdown string into { frontmatter, body, raw }.
@@ -209,7 +210,7 @@ function serializeSimpleYaml(obj, keyOrder) {
       } else {
         lines.push(`${key}:`)
         for (const item of val) {
-          lines.push(`  - ${yamlQuote(String(item))}`)
+          lines.push(`  - ${yamlQuote(String(item), key)}`)
         }
       }
     } else if (val === true) {
@@ -219,7 +220,7 @@ function serializeSimpleYaml(obj, keyOrder) {
     } else if (val === null || val === undefined) {
       // skip
     } else {
-      lines.push(`${key}: ${yamlQuote(String(val))}`)
+      lines.push(`${key}: ${yamlQuote(String(val), key)}`)
     }
   }
 
@@ -249,7 +250,15 @@ function coerceValue(s) {
   return s
 }
 
-function yamlQuote(s) {
+function isYamlDateLiteral(s) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ||
+    /^\d{4}-\d{2}-\d{2}[Tt ][\d:.+-]+(?:[Zz])?$/.test(s)
+}
+
+function yamlQuote(s, key) {
+  if (YAML_DATE_KEYS.has(key) && isYamlDateLiteral(s)) {
+    return s
+  }
   // Quote strings that could be misinterpreted
   if (s === '' || s === 'true' || s === 'false' || s === 'null' ||
       /^[\d.-]/.test(s) || /[:#{}[\],&*?|>!%@`]/.test(s) ||

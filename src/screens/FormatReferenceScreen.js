@@ -102,7 +102,9 @@ draft: false
 ---
 \`\`\`
 
-(Connect to internet to load full reference from GitLab)`,
+(Repo path: apps/megameal/src/content/posts
+Images: apps/megameal/public/blog-images
+Connect to internet to load full reference from GitLab)`,
 }
 
 // ─── GITLAB FETCH ─────────────────────────────────────────────────────────────

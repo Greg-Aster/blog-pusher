@@ -12,7 +12,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { loadSettings, removeFromQueue, updateQueueItem } from '../utils/storage'
-import { publishFile, publishImage } from '../utils/gitlab'
+import { publishFile, publishImage, getImageUploadDirectory } from '../utils/gitlab'
 
 const SITE_LABELS = {
   temporal: 'Temporal Flow',
@@ -109,6 +109,10 @@ export default function PushScreen({ navigation, route }) {
     let allOk = true
 
     addLog(`Target branch: ${effectiveBranch}`)
+    const imageUploadDir = getImageUploadDirectory(siteConfig.path)
+    if (imageUploadDir && (item.images || []).length > 0) {
+      addLog(`Image target folder: ${imageUploadDir}`)
+    }
 
     // Push images first
     for (const img of item.images || []) {
@@ -184,6 +188,9 @@ export default function PushScreen({ navigation, route }) {
   const provider = PROVIDERS.find(p => p.id === destination) || PROVIDERS[0]
   const defaultBranch = getDefaultBranch(destination)
   const effectiveBranch = branchOverride.trim() || defaultBranch
+  const imageUploadDir = settingsSnapshot ? getImageUploadDirectory(
+    settingsSnapshot.sites?.find(s => s.id === item.siteId)?.path || ''
+  ) : null
 
   return (
     <View style={styles.container}>
@@ -213,6 +220,9 @@ export default function PushScreen({ navigation, route }) {
             <Text style={styles.meta}>
               + {item.images.length} image{item.images.length !== 1 ? 's' : ''}
             </Text>
+          )}
+          {imageUploadDir && item.images?.length > 0 && (
+            <Text style={styles.meta}>Images upload to {imageUploadDir}</Text>
           )}
           <Text style={styles.meta}>Added {new Date(item.addedAt).toLocaleDateString()}</Text>
         </View>

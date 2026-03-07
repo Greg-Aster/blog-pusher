@@ -24,8 +24,43 @@ const DEFAULT_SETTINGS = {
     { id: 'temporal', name: 'Temporal Flow', path: 'Temporal-Flow/src/content/posts' },
     { id: 'dndiy', name: 'DNDIY', path: 'DNDIY.github.io/src/content/posts' },
     { id: 'travel', name: 'Trail Log', path: 'apps/travel/src/content/posts' },
-    { id: 'megameal', name: 'MEGAMEAL', path: 'MEGAMEAL/src/content/posts' },
+    { id: 'megameal', name: 'MEGAMEAL', path: 'apps/megameal/src/content/posts' },
   ],
+}
+
+const LEGACY_SITE_PATHS = {
+  megameal: 'MEGAMEAL/src/content/posts',
+}
+
+function normalizeSites(savedSites) {
+  const savedById = new Map(
+    Array.isArray(savedSites)
+      ? savedSites
+          .filter(site => site && typeof site.id === 'string')
+          .map(site => [site.id, site])
+      : []
+  )
+
+  const merged = DEFAULT_SETTINGS.sites.map(defaultSite => {
+    const savedSite = savedById.get(defaultSite.id) || {}
+    const savedPath = typeof savedSite.path === 'string' ? savedSite.path : ''
+    const legacyPath = LEGACY_SITE_PATHS[defaultSite.id]
+    const normalizedPath = savedPath && savedPath !== legacyPath
+      ? savedPath
+      : defaultSite.path
+
+    return {
+      ...defaultSite,
+      ...savedSite,
+      path: normalizedPath,
+    }
+  })
+
+  const extras = Array.isArray(savedSites)
+    ? savedSites.filter(site => site && typeof site.id === 'string' && !DEFAULT_SETTINGS.sites.some(defaultSite => defaultSite.id === site.id))
+    : []
+
+  return [...merged, ...extras]
 }
 
 function normalizeSettings(saved = {}) {
@@ -55,7 +90,7 @@ function normalizeSettings(saved = {}) {
     // Keep legacy aliases so older screens keep working.
     token: providers.gitlab.token,
     project: providers.gitlab.project,
-    sites: Array.isArray(saved.sites) ? saved.sites : DEFAULT_SETTINGS.sites,
+    sites: normalizeSites(saved.sites),
   }
 }
 
