@@ -121,6 +121,27 @@ export function serializeDraft(draft) {
   return serializeMarkdown(fm, draft.body, keyOrder)
 }
 
+/**
+ * Normalize quoted YAML date scalars in an existing Markdown file without
+ * reparsing the whole document structure. This protects queued snapshots
+ * created by older app versions.
+ */
+export function normalizeYamlDateScalars(raw) {
+  if (typeof raw !== 'string' || !raw) return raw
+
+  const match = raw.match(FRONTMATTER_RE)
+  if (!match) return raw
+
+  const yamlBlock = match[1]
+  const normalizedYaml = yamlBlock.replace(
+    /^(published|updated|date|pubDatetime|modDatetime):\s*"(\d{4}-\d{2}-\d{2}(?:[Tt ][\d:.+-]+(?:[Zz])?)?)"\s*$/gm,
+    (_, key, value) => `${key}: ${value}`
+  )
+
+  if (normalizedYaml === yamlBlock) return raw
+  return raw.replace(yamlBlock, normalizedYaml)
+}
+
 // ---------------------------------------------------------------------------
 // Simple YAML helpers (no external dependency)
 // ---------------------------------------------------------------------------

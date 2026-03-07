@@ -13,6 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons'
 import { loadSettings, removeFromQueue, updateQueueItem } from '../utils/storage'
 import { publishFile, publishImage, getImageUploadDirectory } from '../utils/gitlab'
+import { normalizeYamlDateScalars } from '../utils/frontmatter'
 
 const SITE_LABELS = {
   temporal: 'Temporal Flow',
@@ -135,9 +136,15 @@ export default function PushScreen({ navigation, route }) {
     }
 
     const useRemoteIdentity = item.remoteProvider === destination && !!item.remotePath
+    const normalizedContent = normalizeYamlDateScalars(item.content)
+    if (normalizedContent !== item.content) {
+      addLog('Normalized quoted YAML date fields before upload.')
+      await updateQueueItem(item.id, { content: normalizedContent })
+    }
+
     const result = await publishFile(
       item.filename,
-      item.content,
+      normalizedContent,
       settingsForPush,
       siteConfig.path,
       destination,
