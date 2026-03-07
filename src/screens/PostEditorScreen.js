@@ -208,6 +208,14 @@ export default function PostEditorScreen({ navigation, route }) {
         filename: params.queueItem.filename,
         siteId: params.queueItem.siteId,
         images: params.queueItem.images,
+        destination: params.queueItem.destination,
+        remoteFile: params.queueItem.remotePath ? {
+          provider: params.queueItem.remoteProvider || params.queueItem.destination,
+          path: params.queueItem.remotePath,
+          sha: params.queueItem.sourceSha,
+          lastCommitId: params.queueItem.sourceLastCommitId,
+          branch: params.queueItem.remoteBranch,
+        } : null,
       })
     }
     if (params.raw !== undefined) {
@@ -216,6 +224,8 @@ export default function PostEditorScreen({ navigation, route }) {
         filename: params.filename,
         siteId: params.siteId,
         images: params.images,
+        destination: params.destination,
+        remoteFile: params.remoteFile,
       })
     }
     return createPostDraft({ raw: '', filename: 'new-post.md', siteId: 'temporal' })
@@ -477,7 +487,14 @@ export default function PostEditorScreen({ navigation, route }) {
         filename: draft.filename,
         siteId: draft.repoSiteId,
         images: draft.attachedImages,
+        destination: draft.remoteProvider || params.queueItem.destination || null,
+        remoteProvider: draft.remoteProvider || null,
+        remotePath: draft.remotePath || null,
+        sourceSha: draft.sourceSha || null,
+        sourceLastCommitId: draft.sourceLastCommitId || null,
+        remoteBranch: draft.remoteBranch || null,
       })
+      setDraft(prev => prev.dirty ? { ...prev, dirty: false } : prev)
       Alert.alert('Updated', 'Queue item updated with your edits.', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ])
@@ -488,8 +505,15 @@ export default function PostEditorScreen({ navigation, route }) {
         content,
         siteId: draft.repoSiteId,
         images: draft.attachedImages,
+        destination: draft.remoteProvider || null,
+        remoteProvider: draft.remoteProvider || null,
+        remotePath: draft.remotePath || null,
+        sourceSha: draft.sourceSha || null,
+        sourceLastCommitId: draft.sourceLastCommitId || null,
+        remoteBranch: draft.remoteBranch || null,
         addedAt: new Date().toISOString(),
       })
+      setDraft(prev => prev.dirty ? { ...prev, dirty: false } : prev)
       Alert.alert('Queued', `"${draft.filename}" added to push queue.`, [
         { text: 'OK', onPress: () => navigation.navigate('Home') },
       ])
@@ -652,6 +676,18 @@ export default function PostEditorScreen({ navigation, route }) {
 function MetadataForm({ draft, updateField, onTitleChange, onSiteChange }) {
   return (
     <>
+      {draft.remotePath ? (
+        <View style={styles.remoteNotice}>
+          <Ionicons name="git-branch-outline" size={16} color="#2d6a4f" />
+          <View style={styles.remoteNoticeTextWrap}>
+            <Text style={styles.remoteNoticeTitle}>
+              Linked to {draft.remoteProvider === 'github' ? 'GitHub' : 'GitLab'}
+            </Text>
+            <Text style={styles.remoteNoticePath}>{draft.remotePath}</Text>
+          </View>
+        </View>
+      ) : null}
+
       {/* Site selector */}
       <Text style={styles.label}>Target Site</Text>
       <View style={styles.siteRow}>
@@ -1126,6 +1162,20 @@ const styles = StyleSheet.create({
     borderColor: '#e0e8e0',
   },
   draftToggleText: { fontSize: 14, color: '#555' },
+  remoteNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    backgroundColor: '#eef6f1',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#d4e5db',
+    marginBottom: 8,
+  },
+  remoteNoticeTextWrap: { flex: 1 },
+  remoteNoticeTitle: { color: '#24523d', fontSize: 13, fontWeight: '700', marginBottom: 2 },
+  remoteNoticePath: { color: '#567465', fontSize: 12, lineHeight: 17 },
   rawNotice: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -26,6 +26,11 @@ const SITE_COLORS = {
   megameal: '#c0392b',
 }
 
+const PROVIDER_LABELS = {
+  gitlab: 'GitLab',
+  github: 'GitHub',
+}
+
 export default function HomeScreen({ navigation }) {
   const [queue, setQueue] = useState([])
 
@@ -63,6 +68,7 @@ export default function HomeScreen({ navigation }) {
     const color = SITE_COLORS[item.siteId] || '#888'
     const label = SITE_LABELS[item.siteId] || item.siteId
     const imageCount = item.images?.length || 0
+    const providerLabel = PROVIDER_LABELS[item.remoteProvider || item.destination] || 'Choose on push'
     return (
       <TouchableOpacity
         style={styles.card}
@@ -100,12 +106,79 @@ export default function HomeScreen({ navigation }) {
           {item.filename}
         </Text>
         <Text style={styles.cardDate}>Added {formatDate(item.addedAt)}</Text>
+        <Text style={styles.cardMeta}>{providerLabel}</Text>
         <View style={styles.pushRow}>
           <Ionicons name="create-outline" size={14} color={color} />
           <Text style={[styles.pushText, { color }]}>Tap to edit</Text>
           <Text style={styles.pushHint}> | Long-press to push</Text>
         </View>
       </TouchableOpacity>
+    )
+  }
+
+  const actionCards = [
+    {
+      id: 'create',
+      title: 'Create New Post',
+      body: 'Start a blank Markdown draft on your phone and queue it for push.',
+      icon: 'create-outline',
+      color: '#2d6a4f',
+      onPress: () => navigation.navigate('PostEditor', {
+        raw: '',
+        filename: 'new-post.md',
+        siteId: 'temporal',
+      }),
+    },
+    {
+      id: 'import',
+      title: 'Import Markdown File',
+      body: 'Bring a local file into the editor, attach photos, and save it to the queue.',
+      icon: 'document-attach-outline',
+      color: '#8b5e34',
+      onPress: () => navigation.navigate('AddPost'),
+    },
+    {
+      id: 'browse',
+      title: 'Browse Repository',
+      body: 'Open an existing remote post from GitHub or GitLab and edit it in place.',
+      icon: 'folder-open-outline',
+      color: '#4a90d9',
+      onPress: () => navigation.navigate('RepoBrowser'),
+    },
+  ]
+
+  function renderHeader() {
+    return (
+      <View>
+        <View style={styles.hero}>
+          <Text style={styles.heroEyebrow}>Mobile Publishing</Text>
+          <Text style={styles.heroTitle}>Create, edit, browse, and push blog posts from your phone.</Text>
+          <Text style={styles.heroBody}>
+            Local drafts and remote repository posts now share the same editor and push queue.
+          </Text>
+        </View>
+
+        <View style={styles.actionGrid}>
+          {actionCards.map(action => (
+            <TouchableOpacity
+              key={action.id}
+              style={[styles.actionCard, { borderTopColor: action.color }]}
+              onPress={action.onPress}
+              activeOpacity={0.82}
+            >
+              <View style={[styles.actionIconWrap, { backgroundColor: `${action.color}18` }]}>
+                <Ionicons name={action.icon} size={22} color={action.color} />
+              </View>
+              <Text style={styles.actionTitle}>{action.title}</Text>
+              <Text style={styles.actionBody}>{action.body}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <Text style={styles.queueLabel}>
+          Push Queue
+        </Text>
+      </View>
     )
   }
 
@@ -131,43 +204,43 @@ export default function HomeScreen({ navigation }) {
         </View>
       </View>
 
-      {/* Primary action */}
-      <TouchableOpacity
-        style={styles.addBtn}
-        onPress={() => navigation.navigate('AddPost')}
-        activeOpacity={0.8}
-      >
-        <Ionicons name="add-circle-outline" size={22} color="#fff" />
-        <Text style={styles.addBtnText}>New Post</Text>
-      </TouchableOpacity>
-
       {queue.length === 0 ? (
-        <View style={styles.empty}>
-          <Ionicons name="cloud-upload-outline" size={64} color="#ccc" />
-          <Text style={styles.emptyTitle}>Queue is empty</Text>
-          <Text style={styles.emptyText}>
-            Add a post above. When you have signal, come back here and tap it to push.
-          </Text>
-        </View>
+        <FlatList
+          data={[]}
+          renderItem={() => null}
+          keyExtractor={item => item.id}
+          ListHeaderComponent={renderHeader}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="cloud-upload-outline" size={64} color="#ccc" />
+              <Text style={styles.emptyTitle}>Queue is empty</Text>
+              <Text style={styles.emptyText}>
+                Create a post, import one, or browse your repo to start editing.
+              </Text>
+            </View>
+          }
+          contentContainerStyle={styles.emptyList}
+        />
       ) : (
-        <>
-          <Text style={styles.queueLabel}>
-            {queue.length} post{queue.length !== 1 ? 's' : ''} ready to push
-          </Text>
-          <FlatList
-            data={queue}
-            keyExtractor={item => item.id}
-            renderItem={renderItem}
-            contentContainerStyle={styles.list}
-          />
-        </>
+        <FlatList
+          data={queue}
+          keyExtractor={item => item.id}
+          renderItem={renderItem}
+          ListHeaderComponent={renderHeader}
+          contentContainerStyle={styles.list}
+          ListFooterComponent={
+            <Text style={styles.queueFooter}>
+              {queue.length} post{queue.length !== 1 ? 's' : ''} ready to edit or push
+            </Text>
+          }
+        />
       )}
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f4f0' },
+  container: { flex: 1, backgroundColor: '#f4f2ec' },
   header: {
     backgroundColor: '#1a3a2a',
     paddingTop: 50,
@@ -179,36 +252,59 @@ const styles = StyleSheet.create({
   },
   headerTitle: { color: '#fff', fontSize: 22, fontWeight: '700', letterSpacing: 0.5 },
   headerIcons: { flexDirection: 'row', gap: 18, alignItems: 'center' },
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#2d6a4f',
-    margin: 16,
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
+  hero: {
+    backgroundColor: '#efe7d8',
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e1d7c5',
   },
-  addBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+  heroEyebrow: {
+    color: '#8b5e34',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+    marginBottom: 8,
+  },
+  heroTitle: { color: '#2b2318', fontSize: 24, fontWeight: '700', lineHeight: 30 },
+  heroBody: { color: '#635a4f', fontSize: 14, lineHeight: 21, marginTop: 8 },
+  actionGrid: { padding: 16, gap: 12 },
+  actionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 18,
+    padding: 16,
+    borderTopWidth: 4,
+    borderWidth: 1,
+    borderColor: '#e0e6df',
+  },
+  actionIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  actionTitle: { color: '#1a2e1a', fontSize: 17, fontWeight: '700', marginBottom: 6 },
+  actionBody: { color: '#748179', fontSize: 13, lineHeight: 19 },
   queueLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#888',
+    color: '#6f7b74',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
     paddingHorizontal: 16,
-    marginBottom: 4,
+    marginBottom: 8,
   },
-  list: { padding: 16, paddingTop: 8, paddingBottom: 40 },
+  list: { paddingBottom: 40 },
+  emptyList: { flexGrow: 1, paddingBottom: 40 },
   card: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 14,
+    marginHorizontal: 16,
     marginBottom: 10,
     elevation: 2,
     shadowColor: '#000',
@@ -237,6 +333,17 @@ const styles = StyleSheet.create({
   imageBadgeText: { fontSize: 11, color: '#666', fontWeight: '600' },
   cardTitle: { fontSize: 15, fontWeight: '600', color: '#1a2e1a', marginBottom: 4 },
   cardDate: { fontSize: 11, color: '#aaa', marginBottom: 6 },
+  cardMeta: {
+    alignSelf: 'flex-start',
+    color: '#6f7b74',
+    backgroundColor: '#eef2ee',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
   pushRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   pushText: { fontSize: 12, fontWeight: '600' },
   pushHint: { fontSize: 12, color: '#bbb' },
@@ -249,4 +356,11 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontSize: 20, fontWeight: '600', color: '#444', marginTop: 16, marginBottom: 8 },
   emptyText: { fontSize: 14, color: '#888', textAlign: 'center', lineHeight: 20 },
+  queueFooter: {
+    color: '#7b877f',
+    fontSize: 12,
+    textAlign: 'center',
+    paddingTop: 8,
+    paddingBottom: 12,
+  },
 })

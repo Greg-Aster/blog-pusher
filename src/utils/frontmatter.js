@@ -44,7 +44,7 @@ export function serializeMarkdown(frontmatter, body, keyOrder) {
 /**
  * Build a PostDraft from raw Markdown + metadata.
  */
-export function createPostDraft({ raw, filename, siteId, images }) {
+export function createPostDraft({ raw, filename, siteId, images, remoteFile, destination }) {
   const { frontmatter, body } = parseMarkdown(raw)
   return {
     id: Date.now().toString(),
@@ -61,7 +61,11 @@ export function createPostDraft({ raw, filename, siteId, images }) {
     body,
     rawFrontmatter: { ...frontmatter },
     attachedImages: Array.isArray(images) ? images : [],
-    sourceSha: null,
+    remoteProvider: remoteFile?.provider || destination || null,
+    remotePath: remoteFile?.path || null,
+    sourceSha: remoteFile?.sha || null,
+    sourceLastCommitId: remoteFile?.lastCommitId || null,
+    remoteBranch: remoteFile?.branch || null,
     dirty: false,
     rawOriginal: raw,
     createdAt: new Date().toISOString(),

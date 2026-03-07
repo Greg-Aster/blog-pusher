@@ -7,6 +7,7 @@ import HomeScreen from './src/screens/HomeScreen'
 import AddPostScreen from './src/screens/AddPostScreen'
 import PostEditorScreen from './src/screens/PostEditorScreen'
 import PushScreen from './src/screens/PushScreen'
+import RepoBrowserScreen from './src/screens/RepoBrowserScreen'
 import SettingsScreen from './src/screens/SettingsScreen'
 import FormatReferenceScreen from './src/screens/FormatReferenceScreen'
 import { consumeSharedFile } from './src/utils/shareIntent'
@@ -77,6 +78,7 @@ export default function App() {
         <Stack.Screen name="AddPost" component={AddPostScreen} />
         <Stack.Screen name="PostEditor" component={PostEditorScreen} />
         <Stack.Screen name="Push" component={PushScreen} />
+        <Stack.Screen name="RepoBrowser" component={RepoBrowserScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="FormatReference" component={FormatReferenceScreen} />
       </Stack.Navigator>

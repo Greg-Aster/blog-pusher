@@ -11,7 +11,7 @@ import {
   TextInput,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { loadSettings, removeFromQueue } from '../utils/storage'
+import { loadSettings, removeFromQueue, updateQueueItem } from '../utils/storage'
 import { publishFile, publishImage } from '../utils/gitlab'
 
 const SITE_LABELS = {
@@ -51,7 +51,7 @@ export default function PushScreen({ navigation, route }) {
   const { item } = route.params
   const [pushing, setPushing] = useState(false)
   const [log, setLog] = useState([])
-  const [destination, setDestination] = useState(item.destination || 'gitlab')
+  const [destination, setDestination] = useState(item.remoteProvider || item.destination || 'gitlab')
   const [settingsSnapshot, setSettingsSnapshot] = useState(null)
   const [branchOverride, setBranchOverride] = useState('')
 
@@ -64,7 +64,7 @@ export default function PushScreen({ navigation, route }) {
   }
 
   function getDefaultBranch(provider, snapshot = settingsSnapshot) {
-    const branch = snapshot?.providers?.[provider]?.branch
+    const branch = item.remoteProvider === provider ? item.remoteBranch : snapshot?.providers?.[provider]?.branch
     const trimmed = typeof branch === 'string' ? branch.trim() : ''
     return trimmed || 'main'
   }
@@ -130,16 +130,30 @@ export default function PushScreen({ navigation, route }) {
       return
     }
 
+    const useRemoteIdentity = item.remoteProvider === destination && !!item.remotePath
     const result = await publishFile(
       item.filename,
       item.content,
       settingsForPush,
       siteConfig.path,
-      destination
+      destination,
+      useRemoteIdentity ? {
+        remotePath: item.remotePath,
+        sourceSha: item.sourceSha,
+        lastCommitId: item.sourceLastCommitId,
+      } : {}
     )
     if (result.ok) {
       addLog(`✓ Post pushed → ${result.filePath}`)
       addLog(`✓ Destination: ${providerLabel} (${effectiveBranch})`)
+      await updateQueueItem(item.id, {
+        destination,
+        remoteProvider: destination,
+        remotePath: result.filePath || item.remotePath || null,
+        sourceSha: result.sha || item.sourceSha || null,
+        sourceLastCommitId: item.sourceLastCommitId || null,
+        remoteBranch: effectiveBranch,
+      })
     } else {
       addLog(`✗ ${result.error}`, false)
       allOk = false
