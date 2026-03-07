@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 const KEYS = {
   SETTINGS: 'settings',
   QUEUE: 'queue',
+  DRAFTS: 'drafts',
 }
 
 const DEFAULT_SETTINGS = {
@@ -93,4 +94,48 @@ export async function removeFromQueue(id) {
   const queue = await loadQueue()
   const updated = queue.filter(i => i.id !== id)
   await AsyncStorage.setItem(KEYS.QUEUE, JSON.stringify(updated))
+}
+
+export async function updateQueueItem(id, updates) {
+  const queue = await loadQueue()
+  const idx = queue.findIndex(i => i.id === id)
+  if (idx === -1) return
+  queue[idx] = { ...queue[idx], ...updates }
+  await AsyncStorage.setItem(KEYS.QUEUE, JSON.stringify(queue))
+}
+
+// ---------------------------------------------------------------------------
+// Drafts — local autosave for the editor
+// ---------------------------------------------------------------------------
+
+export async function loadDrafts() {
+  try {
+    const raw = await AsyncStorage.getItem(KEYS.DRAFTS)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+export async function saveDraft(draft) {
+  const drafts = await loadDrafts()
+  const idx = drafts.findIndex(d => d.id === draft.id)
+  const updated = { ...draft, updatedAt: new Date().toISOString() }
+  if (idx >= 0) {
+    drafts[idx] = updated
+  } else {
+    drafts.unshift(updated)
+  }
+  await AsyncStorage.setItem(KEYS.DRAFTS, JSON.stringify(drafts))
+}
+
+export async function loadDraft(id) {
+  const drafts = await loadDrafts()
+  return drafts.find(d => d.id === id) || null
+}
+
+export async function deleteDraft(id) {
+  const drafts = await loadDrafts()
+  const updated = drafts.filter(d => d.id !== id)
+  await AsyncStorage.setItem(KEYS.DRAFTS, JSON.stringify(updated))
 }
