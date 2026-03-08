@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Image,
+  AppState,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import Markdown from '@ronradtke/react-native-markdown-display'
@@ -306,9 +307,14 @@ export default function PostEditorScreen({ navigation, route }) {
   const saveTimer = useRef(null)
   const bodyRef = useRef(null)
   const bodySelection = useRef({ start: 0, end: 0 })
+  const latestDraft = useRef(draft)
 
   // Track if user has made any edits (for unsaved-changes guard)
   const hasUnsavedChanges = useRef(false)
+
+  useEffect(() => {
+    latestDraft.current = draft
+  }, [draft])
 
   // Autosave 1.5s after last edit
   const scheduleSave = useCallback((updated) => {
@@ -322,11 +328,33 @@ export default function PostEditorScreen({ navigation, route }) {
     }, 1500)
   }, [])
 
-  useEffect(() => {
-    return () => {
-      if (saveTimer.current) clearTimeout(saveTimer.current)
+  const flushPendingDraftSave = useCallback((resetUi = false) => {
+    if (!hasUnsavedChanges.current) return
+    const pending = latestDraft.current
+    if (!pending) return
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current)
+      saveTimer.current = null
     }
+    hasUnsavedChanges.current = false
+    if (resetUi) {
+      setDraft(prev => prev.dirty ? { ...prev, dirty: false } : prev)
+    }
+    saveDraft({ ...pending, dirty: false }).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => {
+      if (state !== 'active') {
+        flushPendingDraftSave(true)
+      }
+    })
+
+    return () => {
+      subscription.remove()
+      flushPendingDraftSave(false)
+    }
+  }, [flushPendingDraftSave])
 
   // Unsaved-changes guard on back navigation
   useEffect(() => {
@@ -341,7 +369,10 @@ export default function PostEditorScreen({ navigation, route }) {
           {
             text: 'Discard',
             style: 'destructive',
-            onPress: () => navigation.dispatch(e.data.action),
+            onPress: () => {
+              hasUnsavedChanges.current = false
+              navigation.dispatch(e.data.action)
+            },
           },
         ]
       )

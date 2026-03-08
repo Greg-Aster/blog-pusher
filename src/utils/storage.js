@@ -121,7 +121,12 @@ export async function loadQueue() {
 
 export async function addToQueue(item) {
   const queue = await loadQueue()
-  queue.unshift(item)
+  const idx = queue.findIndex(existing => existing.id === item.id)
+  if (idx >= 0) {
+    queue[idx] = { ...queue[idx], ...item }
+  } else {
+    queue.unshift(item)
+  }
   await AsyncStorage.setItem(KEYS.QUEUE, JSON.stringify(queue))
 }
 
@@ -157,16 +162,47 @@ export async function saveDraft(draft) {
   const idx = drafts.findIndex(d => d.id === draft.id)
   const updated = { ...draft, updatedAt: new Date().toISOString() }
   if (idx >= 0) {
-    drafts[idx] = updated
+    drafts.splice(idx, 1)
   } else {
-    drafts.unshift(updated)
+    const identity = getDraftIdentity(updated)
+    if (identity) {
+      const identityIdx = drafts.findIndex(existing => getDraftIdentity(existing) === identity)
+      if (identityIdx >= 0) {
+        drafts.splice(identityIdx, 1)
+      }
+    }
   }
+  drafts.unshift(updated)
   await AsyncStorage.setItem(KEYS.DRAFTS, JSON.stringify(drafts))
 }
 
 export async function loadDraft(id) {
   const drafts = await loadDrafts()
   return drafts.find(d => d.id === id) || null
+}
+
+function normalizeDraftIdentity(provider, path) {
+  const normalizedProvider = String(provider || '').trim().toLowerCase()
+  const normalizedPath = String(path || '').trim().replace(/^\/+|\/+$/g, '')
+  if (!normalizedProvider || !normalizedPath) return null
+  return `${normalizedProvider}:${normalizedPath}`
+}
+
+export function getDraftIdentity(draft) {
+  return normalizeDraftIdentity(draft?.remoteProvider, draft?.remotePath)
+}
+
+export function findMatchingDraft(drafts, match) {
+  const identity = normalizeDraftIdentity(match?.remoteProvider, match?.remotePath)
+  if (!identity) return null
+
+  return (Array.isArray(drafts) ? drafts : []).find(draft => {
+    if (getDraftIdentity(draft) !== identity) return false
+    if (match?.repoSiteId && draft?.repoSiteId && draft.repoSiteId !== match.repoSiteId) {
+      return false
+    }
+    return true
+  }) || null
 }
 
 export async function deleteDraft(id) {

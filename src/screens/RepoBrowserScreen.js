@@ -11,7 +11,7 @@ import {
 } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
-import { loadSettings } from '../utils/storage'
+import { findMatchingDraft, loadDrafts, loadSettings } from '../utils/storage'
 import { listRepoPosts, fetchRepoPost } from '../utils/gitlab'
 
 const PROVIDERS = [
@@ -105,22 +105,46 @@ export default function RepoBrowserScreen({ navigation }) {
 
   async function handleOpenPost(post) {
     if (!settings || !currentSite) return
-    setOpeningId(post.id)
-    const result = await fetchRepoPost(settings, provider, post.path)
-    setOpeningId(null)
+    const drafts = await loadDrafts()
+    const existingDraft = findMatchingDraft(drafts, {
+      remoteProvider: provider,
+      remotePath: post.path,
+      repoSiteId: currentSite.id,
+    })
 
-    if (!result.ok) {
-      Alert.alert('Could not open post', result.error || 'Unknown error.')
+    const openRemote = async () => {
+      setOpeningId(post.id)
+      const result = await fetchRepoPost(settings, provider, post.path)
+      setOpeningId(null)
+
+      if (!result.ok) {
+        Alert.alert('Could not open post', result.error || 'Unknown error.')
+        return
+      }
+
+      navigation.navigate('PostEditor', {
+        raw: result.raw,
+        filename: post.name,
+        siteId: currentSite.id,
+        destination: provider,
+        remoteFile: result.remoteFile,
+      })
+    }
+
+    if (existingDraft) {
+      Alert.alert(
+        'Resume local draft?',
+        'This repo post already has autosaved edits on your device.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Reload Repo Copy', onPress: openRemote },
+          { text: 'Resume Draft', onPress: () => navigation.navigate('PostEditor', { draft: existingDraft }) },
+        ]
+      )
       return
     }
 
-    navigation.navigate('PostEditor', {
-      raw: result.raw,
-      filename: post.name,
-      siteId: currentSite.id,
-      destination: provider,
-      remoteFile: result.remoteFile,
-    })
+    openRemote()
   }
 
   function renderPost({ item }) {

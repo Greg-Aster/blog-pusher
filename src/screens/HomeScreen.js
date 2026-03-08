@@ -7,10 +7,11 @@ import {
   StyleSheet,
   Alert,
   StatusBar,
+  ScrollView,
 } from 'react-native'
 import { useFocusEffect } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
-import { loadQueue, removeFromQueue } from '../utils/storage'
+import { deleteDraft, getDraftIdentity, loadDrafts, loadQueue, removeFromQueue } from '../utils/storage'
 
 const SITE_LABELS = {
   temporal: 'Temporal Flow',
@@ -33,10 +34,14 @@ const PROVIDER_LABELS = {
 
 export default function HomeScreen({ navigation }) {
   const [queue, setQueue] = useState([])
+  const [drafts, setDrafts] = useState([])
 
   useFocusEffect(
     useCallback(() => {
-      loadQueue().then(setQueue)
+      Promise.all([loadQueue(), loadDrafts()]).then(([nextQueue, nextDrafts]) => {
+        setQueue(nextQueue)
+        setDrafts(nextDrafts)
+      })
     }, [])
   )
 
@@ -62,6 +67,27 @@ export default function HomeScreen({ navigation }) {
     return new Date(iso).toLocaleDateString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
     })
+  }
+
+  const queuedDraftIds = new Set(queue.map(item => item.id))
+  const visibleDrafts = drafts.filter(draft => !queuedDraftIds.has(draft.id))
+
+  function handleRemoveDraft(id, name) {
+    Alert.alert(
+      'Delete local draft',
+      `Delete the autosaved draft for "${name}" from this device?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteDraft(id)
+            setDrafts(prev => prev.filter(draft => draft.id !== id))
+          },
+        },
+      ]
+    )
   }
 
   function renderItem({ item }) {
@@ -175,6 +201,63 @@ export default function HomeScreen({ navigation }) {
           ))}
         </View>
 
+        {visibleDrafts.length > 0 ? (
+          <View style={styles.draftsSection}>
+            <View style={styles.sectionHeadingRow}>
+              <Text style={styles.queueLabel}>Resume Drafts</Text>
+              <Text style={styles.sectionHint}>
+                {visibleDrafts.length} local draft{visibleDrafts.length !== 1 ? 's' : ''}
+              </Text>
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.draftsRow}
+            >
+              {visibleDrafts.map(draft => {
+                const color = SITE_COLORS[draft.repoSiteId] || '#888'
+                const label = SITE_LABELS[draft.repoSiteId] || draft.repoSiteId || 'Draft'
+                const title = draft.title || draft.filename || 'Untitled draft'
+                const draftType = getDraftIdentity(draft)
+                  ? 'Repo draft saved on device'
+                  : 'Local draft saved on device'
+
+                return (
+                  <TouchableOpacity
+                    key={draft.id}
+                    style={styles.draftCard}
+                    activeOpacity={0.82}
+                    onPress={() => navigation.navigate('PostEditor', { draft })}
+                    onLongPress={() => handleRemoveDraft(draft.id, title)}
+                  >
+                    <View style={styles.draftCardHeader}>
+                      <View style={[styles.siteBadge, { backgroundColor: color }]}>
+                        <Text style={styles.siteBadgeText}>{label}</Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => handleRemoveDraft(draft.id, title)}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Ionicons name="trash-outline" size={18} color="#bbb" />
+                      </TouchableOpacity>
+                    </View>
+                    <Text style={styles.draftTitle} numberOfLines={2}>
+                      {title}
+                    </Text>
+                    <Text style={styles.draftFilename} numberOfLines={1}>
+                      {draft.filename || 'new-post.md'}
+                    </Text>
+                    <Text style={styles.draftMeta}>{draftType}</Text>
+                    <Text style={styles.draftMeta}>
+                      Updated {formatDate(draft.updatedAt || draft.createdAt || new Date().toISOString())}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </ScrollView>
+          </View>
+        ) : null}
+
         <Text style={styles.queueLabel}>
           Push Queue
         </Text>
@@ -271,6 +354,50 @@ const styles = StyleSheet.create({
   heroTitle: { color: '#2b2318', fontSize: 24, fontWeight: '700', lineHeight: 30 },
   heroBody: { color: '#635a4f', fontSize: 14, lineHeight: 21, marginTop: 8 },
   actionGrid: { padding: 16, gap: 12 },
+  draftsSection: { paddingTop: 4, paddingBottom: 10 },
+  sectionHeadingRow: {
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  sectionHint: { fontSize: 12, color: '#7b877f' },
+  draftsRow: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    gap: 12,
+  },
+  draftCard: {
+    width: 236,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e0e6df',
+  },
+  draftCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  draftTitle: {
+    color: '#1a2e1a',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  draftFilename: {
+    color: '#5f6c63',
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  draftMeta: {
+    color: '#7b877f',
+    fontSize: 12,
+    lineHeight: 17,
+  },
   actionCard: {
     backgroundColor: '#fff',
     borderRadius: 18,
