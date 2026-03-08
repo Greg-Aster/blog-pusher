@@ -12,12 +12,14 @@ import {
   Image,
   AppState,
 } from 'react-native'
+import { MarkdownTextInput } from '@expensify/react-native-live-markdown'
 import { Ionicons } from '@expo/vector-icons'
 import Markdown from '@ronradtke/react-native-markdown-display'
 import * as ImagePicker from 'expo-image-picker'
 import { createPostDraft, serializeDraft } from '../utils/frontmatter'
 import { saveDraft, addToQueue, updateQueueItem, loadSettings } from '../utils/storage'
 import { listRepoPosts } from '../utils/gitlab'
+import { parseLiveMarkdown, getLiveMarkdownStyle } from '../utils/liveMarkdown'
 import { useAppTheme } from '../utils/theme'
 import { SITE_THEMES } from '../utils/siteThemes'
 
@@ -1042,6 +1044,10 @@ export default function PostEditorScreen({ navigation, route }) {
 
   // ---- Render tabs ----
   const activeSite = SITES.find(s => s.id === draft.repoSiteId)
+  const liveMarkdownStyle = useMemo(
+    () => getLiveMarkdownStyle(colors, activeSite?.color),
+    [colors, activeSite?.color]
+  )
   // Only serialize for diff/queue — preview uses draft.body directly
   const serialized = useMemo(() => serializeDraft(draft), [draft])
 
@@ -1221,11 +1227,13 @@ export default function PostEditorScreen({ navigation, route }) {
             colors={colors}
             styles={styles}
           />
-          <TextInput
+          <MarkdownTextInput
             ref={bodyRef}
             style={styles.bodyInput}
             value={draft.body || ''}
             onChangeText={handleBodyChange}
+            parser={parseLiveMarkdown}
+            markdownStyle={liveMarkdownStyle}
             onSelectionChange={e => {
               bodySelection.current = e.nativeEvent.selection
               setEditorSelection(e.nativeEvent.selection)
@@ -1236,6 +1244,9 @@ export default function PostEditorScreen({ navigation, route }) {
             textAlignVertical="top"
             autoCapitalize="sentences"
             autoCorrect={false}
+            keyboardAppearance={theme.dark ? 'dark' : 'light'}
+            selectionColor={activeSite?.color || colors.accent}
+            scrollEnabled
           />
           {/* Word count bar */}
           <View style={styles.statsBar}>
