@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { loadSettings, removeFromQueue, updateQueueItem } from '../utils/storage'
 import { publishFile, publishImage, getImageUploadDirectory } from '../utils/gitlab'
 import { normalizeYamlDateScalars } from '../utils/frontmatter'
+import { useAppTheme } from '../utils/theme'
 
 const SITE_LABELS = {
   temporal: 'Temporal Flow',
@@ -49,6 +50,9 @@ function validateProviderSettings(provider, settings) {
 }
 
 export default function PushScreen({ navigation, route }) {
+  const theme = useAppTheme()
+  const colors = theme.colors
+  const styles = useMemo(() => createStyles(colors), [colors])
   const { item } = route.params
   const [pushing, setPushing] = useState(false)
   const [log, setLog] = useState([])
@@ -206,7 +210,7 @@ export default function PushScreen({ navigation, route }) {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+          <Ionicons name="arrow-back" size={24} color={colors.headerText} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Push to {label}</Text>
         <View style={{ width: 24 }} />
@@ -324,10 +328,10 @@ export default function PushScreen({ navigation, route }) {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f4f0' },
+const createStyles = (colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.backgroundAlt },
   header: {
-    backgroundColor: '#1a3a2a',
+    backgroundColor: colors.header,
     paddingTop: 50,
     paddingBottom: 14,
     paddingHorizontal: 20,
@@ -335,15 +339,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  headerTitle: { color: '#fff', fontSize: 18, fontWeight: '600' },
+  headerTitle: { color: colors.headerText, fontSize: 18, fontWeight: '600' },
   content: { padding: 16, paddingBottom: 40 },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 14,
     padding: 16,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#e0e8e0',
+    borderColor: colors.border,
   },
   siteBadge: {
     alignSelf: 'flex-start',
@@ -361,48 +365,48 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   providerBadgeText: { color: '#fff', fontSize: 11, fontWeight: '600' },
-  filename: { fontSize: 17, fontWeight: '700', color: '#1a2e1a', marginBottom: 4 },
-  meta: { fontSize: 13, color: '#888', marginTop: 2 },
-  sectionLabel: { fontSize: 12, fontWeight: '700', color: '#555', marginBottom: 10, textTransform: 'uppercase' },
+  filename: { fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 4 },
+  meta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
+  sectionLabel: { fontSize: 12, fontWeight: '700', color: colors.textMuted, marginBottom: 10, textTransform: 'uppercase' },
   destinationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
   destinationChip: {
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderWidth: 1.5,
-    borderColor: '#ccc',
-    backgroundColor: '#fff',
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
   },
-  destinationChipText: { color: '#555', fontWeight: '600', fontSize: 13 },
+  destinationChipText: { color: colors.textMuted, fontWeight: '600', fontSize: 13 },
   branchLabel: { marginTop: 16 },
   branchInput: {
     marginTop: 8,
-    backgroundColor: '#f8faf8',
+    backgroundColor: colors.inputBg,
     borderRadius: 10,
     paddingHorizontal: 12,
     paddingVertical: 11,
     fontSize: 14,
-    color: '#1a2e1a',
+    color: colors.inputText,
     borderWidth: 1,
-    borderColor: '#dde8dd',
+    borderColor: colors.border,
   },
   branchHint: {
     marginTop: 8,
     fontSize: 12,
-    color: '#6d7d6d',
+    color: colors.textMuted,
     fontWeight: '600',
   },
   thumbWrap: { marginRight: 10, alignItems: 'center', width: 80 },
   thumb: { width: 80, height: 80, borderRadius: 8 },
-  thumbName: { fontSize: 10, color: '#888', marginTop: 4, width: 80, textAlign: 'center' },
+  thumbName: { fontSize: 10, color: colors.textMuted, marginTop: 4, width: 80, textAlign: 'center' },
   logBox: {
-    backgroundColor: '#1a2e1a',
+    backgroundColor: colors.codeBg,
     borderRadius: 10,
     padding: 14,
     marginBottom: 14,
   },
-  logLine: { color: '#aed8c0', fontSize: 13, fontFamily: 'monospace', marginBottom: 4, lineHeight: 18 },
-  logError: { color: '#ff8080' },
+  logLine: { color: colors.codeText, fontSize: 13, fontFamily: 'monospace', marginBottom: 4, lineHeight: 18 },
+  logError: { color: colors.dangerSoft },
   pushBtn: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   View,
   Text,
@@ -12,8 +12,12 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { loadSettings, saveSettings } from '../utils/storage'
+import { useAppTheme } from '../utils/theme'
 
 export default function SettingsScreen({ navigation }) {
+  const theme = useAppTheme()
+  const colors = theme.colors
+  const styles = useMemo(() => createStyles(colors), [colors])
   const [settings, setSettings] = useState(null)
   const [tokenVisible, setTokenVisible] = useState({
     gitlab: false,
@@ -149,7 +153,7 @@ export default function SettingsScreen({ navigation }) {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+          <Ionicons name="arrow-back" size={24} color={colors.headerText} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Settings</Text>
         <View style={{ width: 24 }} />
@@ -166,7 +170,7 @@ export default function SettingsScreen({ navigation }) {
               value={gitlab.token}
               onChangeText={v => updateProvider('gitlab', 'token', v)}
               placeholder="glpat-xxxxxxxxxxxxxxxxxxxx"
-              placeholderTextColor="#aaa"
+              placeholderTextColor={colors.placeholder}
               secureTextEntry={!tokenVisible.gitlab}
               autoCapitalize="none"
               autoCorrect={false}
@@ -175,11 +179,11 @@ export default function SettingsScreen({ navigation }) {
               <Ionicons
                 name={tokenVisible.gitlab ? 'eye-off-outline' : 'eye-outline'}
                 size={20}
-                color="#666"
+                color={colors.textMuted}
               />
             </TouchableOpacity>
             <TouchableOpacity style={styles.eyeBtn} onPress={() => copyToken('gitlab')}>
-              <Ionicons name="copy-outline" size={20} color="#666" />
+              <Ionicons name="copy-outline" size={20} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -189,7 +193,7 @@ export default function SettingsScreen({ navigation }) {
               Linking.openURL('https://gitlab.com/-/user_settings/personal_access_tokens')
             }
           >
-            <Ionicons name="open-outline" size={14} color="#4a90d9" />
+            <Ionicons name="open-outline" size={14} color={colors.link} />
             <Text style={styles.linkText}>Create a GitLab token (needs `api` scope)</Text>
           </TouchableOpacity>
 
@@ -199,7 +203,7 @@ export default function SettingsScreen({ navigation }) {
             value={gitlab.project}
             onChangeText={v => updateProvider('gitlab', 'project', v)}
             placeholder="username/repo-name"
-            placeholderTextColor="#aaa"
+            placeholderTextColor={colors.placeholder}
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -210,13 +214,13 @@ export default function SettingsScreen({ navigation }) {
             value={gitlab.branch}
             onChangeText={v => updateProvider('gitlab', 'branch', v)}
             placeholder="main"
-            placeholderTextColor="#aaa"
+            placeholderTextColor={colors.placeholder}
             autoCapitalize="none"
             autoCorrect={false}
           />
 
           <TouchableOpacity style={styles.testBtn} onPress={() => handleTestConnection('gitlab')}>
-            <Ionicons name="checkmark-circle-outline" size={16} color="#2d6a4f" />
+            <Ionicons name="checkmark-circle-outline" size={16} color={colors.accent} />
             <Text style={styles.testBtnText}>Test GitLab Connection</Text>
           </TouchableOpacity>
         </View>
@@ -231,7 +235,7 @@ export default function SettingsScreen({ navigation }) {
               value={github.token}
               onChangeText={v => updateProvider('github', 'token', v)}
               placeholder="github_pat_xxxxxxxxxxxxxxxxxxxx"
-              placeholderTextColor="#aaa"
+              placeholderTextColor={colors.placeholder}
               secureTextEntry={!tokenVisible.github}
               autoCapitalize="none"
               autoCorrect={false}
@@ -240,11 +244,11 @@ export default function SettingsScreen({ navigation }) {
               <Ionicons
                 name={tokenVisible.github ? 'eye-off-outline' : 'eye-outline'}
                 size={20}
-                color="#666"
+                color={colors.textMuted}
               />
             </TouchableOpacity>
             <TouchableOpacity style={styles.eyeBtn} onPress={() => copyToken('github')}>
-              <Ionicons name="copy-outline" size={20} color="#666" />
+              <Ionicons name="copy-outline" size={20} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -254,7 +258,7 @@ export default function SettingsScreen({ navigation }) {
               Linking.openURL('https://github.com/settings/personal-access-tokens/new')
             }
           >
-            <Ionicons name="open-outline" size={14} color="#4a90d9" />
+            <Ionicons name="open-outline" size={14} color={colors.link} />
             <Text style={styles.linkText}>Create a GitHub token (needs `repo` access)</Text>
           </TouchableOpacity>
 
@@ -264,7 +268,7 @@ export default function SettingsScreen({ navigation }) {
             value={github.owner}
             onChangeText={v => updateProvider('github', 'owner', v)}
             placeholder="Greg.Aster"
-            placeholderTextColor="#aaa"
+            placeholderTextColor={colors.placeholder}
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -275,7 +279,7 @@ export default function SettingsScreen({ navigation }) {
             value={github.repo}
             onChangeText={v => updateProvider('github', 'repo', v)}
             placeholder="merkin"
-            placeholderTextColor="#aaa"
+            placeholderTextColor={colors.placeholder}
             autoCapitalize="none"
             autoCorrect={false}
           />
@@ -286,13 +290,13 @@ export default function SettingsScreen({ navigation }) {
             value={github.branch}
             onChangeText={v => updateProvider('github', 'branch', v)}
             placeholder="main"
-            placeholderTextColor="#aaa"
+            placeholderTextColor={colors.placeholder}
             autoCapitalize="none"
             autoCorrect={false}
           />
 
           <TouchableOpacity style={styles.testBtn} onPress={() => handleTestConnection('github')}>
-            <Ionicons name="checkmark-circle-outline" size={16} color="#2d6a4f" />
+            <Ionicons name="checkmark-circle-outline" size={16} color={colors.accent} />
             <Text style={styles.testBtnText}>Test GitHub Connection</Text>
           </TouchableOpacity>
         </View>
@@ -311,7 +315,7 @@ export default function SettingsScreen({ navigation }) {
                 value={site.path}
                 onChangeText={v => updateSitePath(site.id, v)}
                 placeholder="path/to/content/posts"
-                placeholderTextColor="#aaa"
+                placeholderTextColor={colors.placeholder}
                 autoCapitalize="none"
                 autoCorrect={false}
               />
@@ -327,7 +331,7 @@ export default function SettingsScreen({ navigation }) {
           <Ionicons
             name={saved ? 'checkmark' : 'save-outline'}
             size={18}
-            color="#fff"
+            color={colors.headerText}
           />
           <Text style={styles.saveBtnText}>
             {saved ? 'Saved!' : 'Save Settings'}
@@ -338,13 +342,13 @@ export default function SettingsScreen({ navigation }) {
   )
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f0f4f0',
+    backgroundColor: colors.backgroundAlt,
   },
   header: {
-    backgroundColor: '#1a3a2a',
+    backgroundColor: colors.header,
     paddingTop: 50,
     paddingBottom: 14,
     paddingHorizontal: 20,
@@ -353,7 +357,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   headerTitle: {
-    color: '#fff',
+    color: colors.headerText,
     fontSize: 18,
     fontWeight: '600',
   },
@@ -362,23 +366,23 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   section: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 14,
     padding: 16,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#e0e8e0',
+    borderColor: colors.border,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1a3a2a',
+    color: colors.text,
     marginBottom: 14,
   },
   label: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#555',
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 6,
@@ -386,18 +390,18 @@ const styles = StyleSheet.create({
   },
   hint: {
     fontSize: 13,
-    color: '#888',
+    color: colors.textMuted,
     marginBottom: 4,
     lineHeight: 18,
   },
   input: {
-    backgroundColor: '#f8faf8',
+    backgroundColor: colors.inputBg,
     borderRadius: 8,
     padding: 11,
     fontSize: 14,
-    color: '#1a2e1a',
+    color: colors.inputText,
     borderWidth: 1,
-    borderColor: '#dde8dd',
+    borderColor: colors.border,
   },
   tokenRow: {
     flexDirection: 'row',
@@ -406,10 +410,10 @@ const styles = StyleSheet.create({
   },
   eyeBtn: {
     padding: 11,
-    backgroundColor: '#f8faf8',
+    backgroundColor: colors.inputBg,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#dde8dd',
+    borderColor: colors.border,
   },
   linkBtn: {
     flexDirection: 'row',
@@ -420,7 +424,7 @@ const styles = StyleSheet.create({
   },
   linkText: {
     fontSize: 13,
-    color: '#4a90d9',
+    color: colors.link,
   },
   testBtn: {
     flexDirection: 'row',
@@ -431,11 +435,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 8,
     borderWidth: 1.5,
-    borderColor: '#2d6a4f',
+    borderColor: colors.accent,
     alignSelf: 'flex-start',
   },
   testBtnText: {
-    color: '#2d6a4f',
+    color: colors.accent,
     fontWeight: '600',
     fontSize: 14,
   },
@@ -444,7 +448,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#2d6a4f',
+    backgroundColor: colors.accent,
     borderRadius: 12,
     paddingVertical: 16,
     marginTop: 4,
@@ -453,7 +457,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#4a9e6f',
   },
   saveBtnText: {
-    color: '#fff',
+    color: colors.headerText,
     fontWeight: '700',
     fontSize: 16,
   },

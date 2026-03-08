@@ -17,6 +17,7 @@ import Markdown from '@ronradtke/react-native-markdown-display'
 import * as ImagePicker from 'expo-image-picker'
 import { createPostDraft, serializeDraft } from '../utils/frontmatter'
 import { saveDraft, addToQueue, updateQueueItem } from '../utils/storage'
+import { useAppTheme } from '../utils/theme'
 
 const SITES = [
   { id: 'temporal', label: 'Temporal Flow', color: '#4a90d9' },
@@ -263,6 +264,10 @@ const CLOSE_PAIRS = {
 export default function PostEditorScreen({ navigation, route }) {
   const params = route.params || {}
   const isFromQueue = !!params.queueItem
+  const theme = useAppTheme()
+  const colors = theme.colors
+  const styles = useMemo(() => createStyles(colors), [colors])
+  const markdownStyles = useMemo(() => getMarkdownStyles(colors), [colors])
 
   // Build initial draft from params
   const [draft, setDraft] = useState(() => {
@@ -718,7 +723,7 @@ export default function PostEditorScreen({ navigation, route }) {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+          <Ionicons name="arrow-back" size={24} color={colors.headerText} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>
           {draft.filename || 'New Post'}
@@ -739,7 +744,7 @@ export default function PostEditorScreen({ navigation, route }) {
             <Ionicons
               name={tab.icon}
               size={16}
-              color={activeTab === tab.id ? '#2d6a4f' : '#999'}
+              color={activeTab === tab.id ? colors.accent : colors.textSoft}
             />
             <Text style={[styles.tabText, activeTab === tab.id && styles.tabTextActive]}>
               {tab.label}
@@ -760,6 +765,8 @@ export default function PostEditorScreen({ navigation, route }) {
             updateField={updateField}
             onTitleChange={handleTitleChange}
             onSiteChange={handleSiteChange}
+            colors={colors}
+            styles={styles}
           />
         </ScrollView>
       )}
@@ -783,13 +790,13 @@ export default function PostEditorScreen({ navigation, route }) {
               </TouchableOpacity>
             ))}
             <View style={styles.toolbarDivider} />
-            <TouchableOpacity
-              style={styles.toolbarBtn}
-              onPress={handlePickImage}
-            >
-              <Ionicons name="image-outline" size={18} color="#2d6a4f" />
-            </TouchableOpacity>
-          </ScrollView>
+              <TouchableOpacity
+                style={styles.toolbarBtn}
+                onPress={handlePickImage}
+              >
+              <Ionicons name="image-outline" size={18} color={colors.accent} />
+              </TouchableOpacity>
+            </ScrollView>
           <ImageManager
             images={draft.attachedImages || []}
             heroImage={draft.heroImage}
@@ -798,6 +805,8 @@ export default function PostEditorScreen({ navigation, route }) {
             onSetHeroImage={image => updateField('heroImage', image.publicPath)}
             onUpdateImage={updateAttachedImage}
             onRemoveImage={removeAttachedImage}
+            colors={colors}
+            styles={styles}
           />
           <TextInput
             ref={bodyRef}
@@ -808,7 +817,7 @@ export default function PostEditorScreen({ navigation, route }) {
               bodySelection.current = e.nativeEvent.selection
             }}
             placeholder="Write your post in Markdown..."
-            placeholderTextColor="#aaa"
+            placeholderTextColor={colors.placeholder}
             multiline
             textAlignVertical="top"
             autoCapitalize="sentences"
@@ -825,7 +834,7 @@ export default function PostEditorScreen({ navigation, route }) {
 
       {activeTab === 'preview' && (
         <ScrollView style={styles.tabContent} contentContainerStyle={styles.previewContainer}>
-          <MarkdownPreview body={draft.body} title={draft.title} />
+          <MarkdownPreview body={draft.body} title={draft.title} markdownStyles={markdownStyles} styles={styles} />
         </ScrollView>
       )}
 
@@ -842,7 +851,7 @@ export default function PostEditorScreen({ navigation, route }) {
           onPress={handleSaveToQueue}
           activeOpacity={0.8}
         >
-          <Ionicons name="cloud-upload-outline" size={18} color="#fff" />
+          <Ionicons name="cloud-upload-outline" size={18} color={colors.headerText} />
           <Text style={styles.queueBtnText}>
             {isFromQueue ? 'Update in Queue' : 'Add to Queue'}
           </Text>
@@ -855,12 +864,12 @@ export default function PostEditorScreen({ navigation, route }) {
 // ---------------------------------------------------------------------------
 // Metadata Form
 // ---------------------------------------------------------------------------
-function MetadataForm({ draft, updateField, onTitleChange, onSiteChange }) {
+function MetadataForm({ draft, updateField, onTitleChange, onSiteChange, colors, styles }) {
   return (
     <>
       {draft.remotePath ? (
         <View style={styles.remoteNotice}>
-          <Ionicons name="git-branch-outline" size={16} color="#2d6a4f" />
+          <Ionicons name="git-branch-outline" size={16} color={colors.accent} />
           <View style={styles.remoteNoticeTextWrap}>
             <Text style={styles.remoteNoticeTitle}>
               Linked to {draft.remoteProvider === 'github' ? 'GitHub' : 'GitLab'}
@@ -906,7 +915,7 @@ function MetadataForm({ draft, updateField, onTitleChange, onSiteChange }) {
         value={draft.filename || ''}
         onChangeText={v => updateField('filename', v)}
         placeholder="my-post.md"
-        placeholderTextColor="#aaa"
+        placeholderTextColor={colors.placeholder}
         autoCapitalize="none"
         autoCorrect={false}
       />
@@ -918,7 +927,7 @@ function MetadataForm({ draft, updateField, onTitleChange, onSiteChange }) {
         value={draft.title || ''}
         onChangeText={onTitleChange}
         placeholder="Post title"
-        placeholderTextColor="#aaa"
+        placeholderTextColor={colors.placeholder}
         autoCapitalize="words"
       />
 
@@ -929,7 +938,7 @@ function MetadataForm({ draft, updateField, onTitleChange, onSiteChange }) {
         value={draft.description || ''}
         onChangeText={v => updateField('description', v)}
         placeholder="Short summary (optional)"
-        placeholderTextColor="#aaa"
+        placeholderTextColor={colors.placeholder}
         multiline
       />
 
@@ -948,7 +957,7 @@ function MetadataForm({ draft, updateField, onTitleChange, onSiteChange }) {
         value={draft.published || ''}
         onChangeText={v => updateField('published', v)}
         placeholder="2026-03-07"
-        placeholderTextColor="#aaa"
+        placeholderTextColor={colors.placeholder}
         autoCapitalize="none"
       />
 
@@ -961,7 +970,7 @@ function MetadataForm({ draft, updateField, onTitleChange, onSiteChange }) {
           updateField('tags', v.split(',').map(t => t.trim()).filter(Boolean))
         }
         placeholder="Hiking, Nature, Trail (comma separated)"
-        placeholderTextColor="#aaa"
+        placeholderTextColor={colors.placeholder}
         autoCapitalize="words"
       />
 
@@ -972,7 +981,7 @@ function MetadataForm({ draft, updateField, onTitleChange, onSiteChange }) {
         value={draft.category || ''}
         onChangeText={v => updateField('category', v)}
         placeholder="Blog"
-        placeholderTextColor="#aaa"
+        placeholderTextColor={colors.placeholder}
         autoCapitalize="words"
       />
 
@@ -983,7 +992,7 @@ function MetadataForm({ draft, updateField, onTitleChange, onSiteChange }) {
         value={draft.heroImage || ''}
         onChangeText={v => updateField('heroImage', v)}
         placeholder="/blog-images/hero.jpg"
-        placeholderTextColor="#aaa"
+        placeholderTextColor={colors.placeholder}
         autoCapitalize="none"
       />
 
@@ -995,9 +1004,9 @@ function MetadataForm({ draft, updateField, onTitleChange, onSiteChange }) {
         <Ionicons
           name={draft.draft ? 'checkbox-outline' : 'square-outline'}
           size={22}
-          color={draft.draft ? '#e67e22' : '#aaa'}
+          color={draft.draft ? colors.warning : colors.textSoft}
         />
-        <Text style={[styles.draftToggleText, draft.draft && { color: '#e67e22' }]}>
+        <Text style={[styles.draftToggleText, draft.draft && { color: colors.warning }]}>
           Mark as draft (unpublished)
         </Text>
       </TouchableOpacity>
@@ -1005,7 +1014,7 @@ function MetadataForm({ draft, updateField, onTitleChange, onSiteChange }) {
       {/* Unknown frontmatter keys notice */}
       {Object.keys(draft.rawFrontmatter || {}).length > 0 && (
         <View style={styles.rawNotice}>
-          <Ionicons name="information-circle-outline" size={16} color="#888" />
+          <Ionicons name="information-circle-outline" size={16} color={colors.textSoft} />
           <Text style={styles.rawNoticeText}>
             {Object.keys(draft.rawFrontmatter).length} frontmatter key(s) preserved from original file
           </Text>
@@ -1023,6 +1032,8 @@ function ImageManager({
   onSetHeroImage,
   onUpdateImage,
   onRemoveImage,
+  colors,
+  styles,
 }) {
   return (
     <View style={styles.imageManager}>
@@ -1034,14 +1045,14 @@ function ImageManager({
           </Text>
         </View>
         <TouchableOpacity style={styles.imageAddBtn} onPress={onAddImage}>
-          <Ionicons name="add-circle-outline" size={18} color="#fff" />
+          <Ionicons name="add-circle-outline" size={18} color={colors.headerText} />
           <Text style={styles.imageAddBtnText}>Add Photo</Text>
         </TouchableOpacity>
       </View>
 
       {images.length === 0 ? (
         <View style={styles.imageEmptyState}>
-          <Ionicons name="images-outline" size={18} color="#91a197" />
+          <Ionicons name="images-outline" size={18} color={colors.textMuted} />
           <Text style={styles.imageEmptyText}>
             No photos attached yet. Added photos will insert as `/blog-images/...` and upload with the queue item.
           </Text>
@@ -1060,7 +1071,7 @@ function ImageManager({
                   <Image source={{ uri: image.uri }} style={styles.imageThumb} />
                 ) : (
                   <View style={[styles.imageThumb, styles.imageThumbFallback]}>
-                    <Ionicons name="image-outline" size={24} color="#8fa196" />
+                    <Ionicons name="image-outline" size={24} color={colors.textMuted} />
                   </View>
                 )}
 
@@ -1084,29 +1095,29 @@ function ImageManager({
                   value={image.alt}
                   onChangeText={value => onUpdateImage(image.id, { alt: value })}
                   placeholder="Alt text"
-                  placeholderTextColor="#8ba097"
+                  placeholderTextColor={colors.placeholder}
                 />
 
                 <View style={styles.imageActionRow}>
                   <TouchableOpacity
                     style={styles.imageActionBtn}
-                    onPress={() => onInsertImage(image)}
-                  >
-                    <Ionicons name="enter-outline" size={15} color="#2d6a4f" />
+                  onPress={() => onInsertImage(image)}
+                >
+                    <Ionicons name="enter-outline" size={15} color={colors.accent} />
                     <Text style={styles.imageActionText}>Insert</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.imageActionBtn}
-                    onPress={() => onSetHeroImage(image)}
-                  >
-                    <Ionicons name="image-outline" size={15} color="#8b5e34" />
+                  onPress={() => onSetHeroImage(image)}
+                >
+                    <Ionicons name="image-outline" size={15} color={colors.warning} />
                     <Text style={styles.imageActionText}>Set Hero</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.imageActionBtn}
-                    onPress={() => onRemoveImage(image.id)}
-                  >
-                    <Ionicons name="trash-outline" size={15} color="#b24b4b" />
+                  onPress={() => onRemoveImage(image.id)}
+                >
+                    <Ionicons name="trash-outline" size={15} color={colors.danger} />
                     <Text style={styles.imageActionText}>Remove</Text>
                   </TouchableOpacity>
                 </View>
@@ -1122,33 +1133,33 @@ function ImageManager({
 // ---------------------------------------------------------------------------
 // Markdown Preview using @ronradtke/react-native-markdown-display
 // ---------------------------------------------------------------------------
-const markdownStyles = {
-  body: { color: '#1a2e1a', fontSize: 15, lineHeight: 22 },
-  heading1: { fontSize: 26, fontWeight: '700', color: '#1a2e1a', marginTop: 12, marginBottom: 4 },
-  heading2: { fontSize: 22, fontWeight: '700', color: '#1a2e1a', marginTop: 12, marginBottom: 4 },
-  heading3: { fontSize: 19, fontWeight: '700', color: '#1a2e1a', marginTop: 12, marginBottom: 4 },
-  heading4: { fontSize: 17, fontWeight: '700', color: '#1a2e1a', marginTop: 10, marginBottom: 4 },
-  heading5: { fontSize: 15, fontWeight: '700', color: '#1a2e1a', marginTop: 8, marginBottom: 4 },
-  heading6: { fontSize: 14, fontWeight: '700', color: '#1a2e1a', marginTop: 8, marginBottom: 4 },
-  hr: { backgroundColor: '#ddd', height: 1, marginVertical: 12 },
+const getMarkdownStyles = (colors) => ({
+  body: { color: colors.text, fontSize: 15, lineHeight: 22 },
+  heading1: { fontSize: 26, fontWeight: '700', color: colors.text, marginTop: 12, marginBottom: 4 },
+  heading2: { fontSize: 22, fontWeight: '700', color: colors.text, marginTop: 12, marginBottom: 4 },
+  heading3: { fontSize: 19, fontWeight: '700', color: colors.text, marginTop: 12, marginBottom: 4 },
+  heading4: { fontSize: 17, fontWeight: '700', color: colors.text, marginTop: 10, marginBottom: 4 },
+  heading5: { fontSize: 15, fontWeight: '700', color: colors.text, marginTop: 8, marginBottom: 4 },
+  heading6: { fontSize: 14, fontWeight: '700', color: colors.text, marginTop: 8, marginBottom: 4 },
+  hr: { backgroundColor: colors.border, height: 1, marginVertical: 12 },
   blockquote: {
     borderLeftWidth: 3,
-    borderLeftColor: '#2d6a4f',
+    borderLeftColor: colors.accent,
     paddingLeft: 12,
     marginVertical: 4,
     backgroundColor: 'transparent',
   },
   code_inline: {
-    backgroundColor: '#e8ece8',
-    color: '#2d6a4f',
+    backgroundColor: colors.overlay,
+    color: colors.accent,
     borderRadius: 4,
     paddingHorizontal: 4,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     fontSize: 14,
   },
   code_block: {
-    backgroundColor: '#1a2e1a',
-    color: '#aed8c0',
+    backgroundColor: colors.codeBg,
+    color: colors.codeText,
     borderRadius: 8,
     padding: 12,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
@@ -1156,25 +1167,25 @@ const markdownStyles = {
     lineHeight: 20,
   },
   fence: {
-    backgroundColor: '#1a2e1a',
-    color: '#aed8c0',
+    backgroundColor: colors.codeBg,
+    color: colors.codeText,
     borderRadius: 8,
     padding: 12,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     fontSize: 13,
     lineHeight: 20,
   },
-  link: { color: '#2d6a4f', textDecorationLine: 'underline' },
+  link: { color: colors.link, textDecorationLine: 'underline' },
   strong: { fontWeight: '700' },
   em: { fontStyle: 'italic' },
   s: { textDecorationLine: 'line-through' },
   list_item: { marginVertical: 2 },
-  bullet_list_icon: { color: '#2d6a4f' },
-  ordered_list_icon: { color: '#2d6a4f' },
+  bullet_list_icon: { color: colors.accent },
+  ordered_list_icon: { color: colors.accent },
   image: { borderRadius: 8 },
-}
+})
 
-function MarkdownPreview({ body, title }) {
+function MarkdownPreview({ body, title, markdownStyles, styles }) {
   if (!body && !title) {
     return <Text style={styles.previewEmpty}>Nothing to preview yet.</Text>
   }
@@ -1349,10 +1360,10 @@ function DiffView({ original, current }) {
 // ---------------------------------------------------------------------------
 // Styles
 // ---------------------------------------------------------------------------
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f4f0' },
+const createStyles = (colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.backgroundAlt },
   header: {
-    backgroundColor: '#1a3a2a',
+    backgroundColor: colors.header,
     paddingTop: 50,
     paddingBottom: 14,
     paddingHorizontal: 20,
@@ -1360,15 +1371,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  headerTitle: { color: '#fff', fontSize: 18, fontWeight: '600', flex: 1, marginHorizontal: 12 },
-  saveStatus: { color: '#aed8c0', fontSize: 12, width: 55, textAlign: 'right' },
+  headerTitle: { color: colors.headerText, fontSize: 18, fontWeight: '600', flex: 1, marginHorizontal: 12 },
+  saveStatus: { color: colors.accentSoft, fontSize: 12, width: 55, textAlign: 'right' },
 
   // Tab bar
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e8e0',
+    borderBottomColor: colors.border,
   },
   tab: {
     flex: 1,
@@ -1378,9 +1389,9 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingVertical: 10,
   },
-  tabActive: { borderBottomWidth: 2, borderBottomColor: '#2d6a4f' },
-  tabText: { fontSize: 12, color: '#999', fontWeight: '500' },
-  tabTextActive: { color: '#2d6a4f', fontWeight: '700' },
+  tabActive: { borderBottomWidth: 2, borderBottomColor: colors.accent },
+  tabText: { fontSize: 12, color: colors.textSoft, fontWeight: '500' },
+  tabTextActive: { color: colors.accent, fontWeight: '700' },
 
   // Tab content
   tabContent: { flex: 1 },
@@ -1390,7 +1401,7 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#555',
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 6,
@@ -1403,7 +1414,7 @@ const styles = StyleSheet.create({
   },
   slugBtn: {
     fontSize: 12,
-    color: '#2d6a4f',
+    color: colors.accent,
     fontWeight: '600',
     marginTop: 14,
   },
@@ -1413,28 +1424,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderWidth: 1.5,
-    borderColor: '#ccc',
-    backgroundColor: '#fff',
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
   },
-  siteChipText: { fontSize: 13, fontWeight: '500', color: '#555' },
+  siteChipText: { fontSize: 13, fontWeight: '500', color: colors.textMuted },
   input: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.inputBg,
     borderRadius: 10,
     padding: 12,
     fontSize: 15,
-    color: '#1a2e1a',
+    color: colors.inputText,
     borderWidth: 1,
-    borderColor: '#e0e8e0',
+    borderColor: colors.border,
   },
   titleInput: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.inputBg,
     borderRadius: 10,
     padding: 12,
     fontSize: 18,
     fontWeight: '600',
-    color: '#1a2e1a',
+    color: colors.inputText,
     borderWidth: 1,
-    borderColor: '#e0e8e0',
+    borderColor: colors.border,
   },
   draftToggle: {
     flexDirection: 'row',
@@ -1442,42 +1453,42 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 16,
     padding: 12,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#e0e8e0',
+    borderColor: colors.border,
   },
-  draftToggleText: { fontSize: 14, color: '#555' },
+  draftToggleText: { fontSize: 14, color: colors.textMuted },
   remoteNotice: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     padding: 12,
-    backgroundColor: '#eef6f1',
+    backgroundColor: colors.surfaceMuted,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#d4e5db',
+    borderColor: colors.borderStrong,
     marginBottom: 8,
   },
   remoteNoticeTextWrap: { flex: 1 },
-  remoteNoticeTitle: { color: '#24523d', fontSize: 13, fontWeight: '700', marginBottom: 2 },
-  remoteNoticePath: { color: '#567465', fontSize: 12, lineHeight: 17 },
+  remoteNoticeTitle: { color: colors.accent, fontSize: 13, fontWeight: '700', marginBottom: 2 },
+  remoteNoticePath: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
   rawNotice: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginTop: 16,
     padding: 10,
-    backgroundColor: '#f8f9f8',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 8,
   },
-  rawNoticeText: { fontSize: 12, color: '#888', flex: 1 },
+  rawNoticeText: { fontSize: 12, color: colors.textSoft, flex: 1 },
 
   // Toolbar
   toolbar: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e8e0',
+    borderBottomColor: colors.border,
     maxHeight: 44,
   },
   toolbarInner: { paddingHorizontal: 8, alignItems: 'center', gap: 2 },
@@ -1488,20 +1499,20 @@ const styles = StyleSheet.create({
   },
   toolbarBtnText: {
     fontSize: 14,
-    color: '#2d6a4f',
+    color: colors.accent,
     fontWeight: '600',
     fontFamily: 'monospace',
   },
   toolbarDivider: {
     width: 1,
     height: 20,
-    backgroundColor: '#e0e8e0',
+    backgroundColor: colors.border,
     marginHorizontal: 4,
   },
   imageManager: {
-    backgroundColor: '#f7f3ea',
+    backgroundColor: colors.imagePanel,
     borderBottomWidth: 1,
-    borderBottomColor: '#e3ddcf',
+    borderBottomColor: colors.border,
     paddingHorizontal: 12,
     paddingVertical: 12,
     gap: 10,
@@ -1513,13 +1524,13 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   imageManagerTitle: {
-    color: '#2b2318',
+    color: colors.textStrong,
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 4,
   },
   imageManagerHint: {
-    color: '#6e6558',
+    color: colors.textMuted,
     fontSize: 12,
     lineHeight: 18,
     maxWidth: 220,
@@ -1528,7 +1539,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#2d6a4f',
+    backgroundColor: colors.accent,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 9,
@@ -1538,32 +1549,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#e6dfd0',
+    borderColor: colors.border,
     padding: 12,
   },
   imageEmptyText: {
     flex: 1,
-    color: '#7d867e',
+    color: colors.textMuted,
     fontSize: 12,
     lineHeight: 18,
   },
   imageCardRow: { gap: 10, paddingRight: 12 },
   imageCard: {
     width: 248,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#e4ddd0',
+    borderColor: colors.border,
     padding: 10,
   },
   imageThumb: {
     width: '100%',
     height: 132,
     borderRadius: 10,
-    backgroundColor: '#ecf1ec',
+    backgroundColor: colors.overlay,
     marginBottom: 10,
   },
   imageThumbFallback: {
@@ -1579,35 +1590,35 @@ const styles = StyleSheet.create({
   },
   imageFilename: {
     flex: 1,
-    color: '#1a2e1a',
+    color: colors.text,
     fontSize: 13,
     fontWeight: '700',
   },
   heroBadge: {
-    backgroundColor: '#efe7d8',
+    backgroundColor: colors.hero,
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
   heroBadgeText: {
-    color: '#8b5e34',
+    color: colors.warning,
     fontSize: 11,
     fontWeight: '700',
   },
   imagePublicPath: {
-    color: '#79867f',
+    color: colors.textMuted,
     fontSize: 11,
     marginBottom: 8,
   },
   imageAltInput: {
-    backgroundColor: '#f7faf7',
+    backgroundColor: colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: '#dde7de',
+    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 9,
     fontSize: 13,
-    color: '#1a2e1a',
+    color: colors.inputText,
     marginBottom: 10,
   },
   imageActionRow: {
@@ -1625,16 +1636,16 @@ const styles = StyleSheet.create({
   imageActionText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#4c5a52',
+    color: colors.textMuted,
   },
 
   // Body editor
   bodyInput: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.inputBg,
     padding: 16,
     fontSize: 15,
-    color: '#1a2e1a',
+    color: colors.inputText,
     lineHeight: 22,
     fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
     textAlignVertical: 'top',
@@ -1642,50 +1653,50 @@ const styles = StyleSheet.create({
 
   // Stats bar (word count)
   statsBar: {
-    backgroundColor: '#f8f9f8',
+    backgroundColor: colors.surfaceAlt,
     borderTopWidth: 1,
-    borderTopColor: '#e0e8e0',
+    borderTopColor: colors.border,
     paddingHorizontal: 16,
     paddingVertical: 6,
   },
   statsText: {
     fontSize: 11,
-    color: '#999',
+    color: colors.textSoft,
     fontFamily: 'monospace',
     textAlign: 'right',
   },
 
   // Preview
   previewContainer: { padding: 16, paddingBottom: 40 },
-  previewEmpty: { fontSize: 15, color: '#aaa', textAlign: 'center', marginTop: 40 },
+  previewEmpty: { fontSize: 15, color: colors.textSoft, textAlign: 'center', marginTop: 40 },
 
   // Diff
-  diffLabel: { fontSize: 14, color: '#555', fontWeight: '600', marginBottom: 8 },
+  diffLabel: { fontSize: 14, color: colors.textMuted, fontWeight: '600', marginBottom: 8 },
   diffSummary: {
-    backgroundColor: '#1a2e1a',
+    backgroundColor: colors.codeBg,
     padding: 10,
     borderRadius: 8,
     marginBottom: 8,
   },
-  diffSummaryText: { color: '#aed8c0', fontSize: 13, fontFamily: 'monospace' },
+  diffSummaryText: { color: colors.codeText, fontSize: 13, fontFamily: 'monospace' },
   diffBox: {
-    backgroundColor: '#1a2e1a',
+    backgroundColor: colors.codeBg,
     borderRadius: 8,
     padding: 12,
   },
-  diffText: { color: '#aed8c0', fontSize: 13, fontFamily: 'monospace', lineHeight: 20 },
-  diffLine: { color: '#aed8c0', fontSize: 13, fontFamily: 'monospace', lineHeight: 20 },
+  diffText: { color: colors.codeText, fontSize: 13, fontFamily: 'monospace', lineHeight: 20 },
+  diffLine: { color: colors.codeText, fontSize: 13, fontFamily: 'monospace', lineHeight: 20 },
   diffAdded: { color: '#7ddf90', backgroundColor: 'rgba(125,223,144,0.1)' },
-  diffRemoved: { color: '#ff8080', backgroundColor: 'rgba(255,128,128,0.1)' },
-  diffSkip: { color: '#667', fontSize: 12, fontFamily: 'monospace', lineHeight: 20, fontStyle: 'italic', paddingVertical: 2 },
+  diffRemoved: { color: colors.dangerSoft, backgroundColor: 'rgba(255,128,128,0.1)' },
+  diffSkip: { color: colors.textSoft, fontSize: 12, fontFamily: 'monospace', lineHeight: 20, fontStyle: 'italic', paddingVertical: 2 },
 
   // Bottom bar
   bottomBar: {
     padding: 12,
     paddingBottom: 24,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderTopWidth: 1,
-    borderTopColor: '#e8eee8',
+    borderTopColor: colors.border,
   },
   queueBtn: {
     flexDirection: 'row',

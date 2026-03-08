@@ -13,6 +13,7 @@ import { useFocusEffect } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
 import { findMatchingDraft, loadDrafts, loadSettings } from '../utils/storage'
 import { listRepoPosts, fetchRepoPost } from '../utils/gitlab'
+import { useAppTheme } from '../utils/theme'
 
 const PROVIDERS = [
   { id: 'gitlab', label: 'GitLab', color: '#fc6d26' },
@@ -35,6 +36,9 @@ function validateProviderSettings(provider, settings) {
 }
 
 export default function RepoBrowserScreen({ navigation }) {
+  const theme = useAppTheme()
+  const colors = theme.colors
+  const styles = useMemo(() => createStyles(colors), [colors])
   const [settings, setSettings] = useState(null)
   const [provider, setProvider] = useState('gitlab')
   const [siteId, setSiteId] = useState('temporal')
@@ -159,9 +163,9 @@ export default function RepoBrowserScreen({ navigation }) {
         <View style={styles.postHeader}>
           <Text style={styles.postName} numberOfLines={1}>{item.name}</Text>
           {busy ? (
-            <ActivityIndicator size="small" color="#2d6a4f" />
+            <ActivityIndicator size="small" color={colors.accent} />
           ) : (
-            <Ionicons name="open-outline" size={18} color="#2d6a4f" />
+            <Ionicons name="open-outline" size={18} color={colors.accent} />
           )}
         </View>
         <Text style={styles.postPath} numberOfLines={2}>{item.path}</Text>
@@ -176,14 +180,14 @@ export default function RepoBrowserScreen({ navigation }) {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+          <Ionicons name="arrow-back" size={24} color={colors.headerText} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Browse Repo</Text>
         <TouchableOpacity
           onPress={handleLoadPosts}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="refresh-outline" size={22} color="#fff" />
+          <Ionicons name="refresh-outline" size={22} color={colors.headerText} />
         </TouchableOpacity>
       </View>
 
@@ -262,7 +266,7 @@ export default function RepoBrowserScreen({ navigation }) {
               value={query}
               onChangeText={setQuery}
               placeholder="Search filenames or paths"
-              placeholderTextColor="#8fa196"
+              placeholderTextColor={colors.placeholder}
               autoCapitalize="none"
               autoCorrect={false}
             />
@@ -279,7 +283,7 @@ export default function RepoBrowserScreen({ navigation }) {
         ListEmptyComponent={
           loading ? null : (
             <View style={styles.empty}>
-              <Ionicons name="document-text-outline" size={54} color="#c3cec6" />
+              <Ionicons name="document-text-outline" size={54} color={colors.textSoft} />
               <Text style={styles.emptyTitle}>No posts loaded yet</Text>
               <Text style={styles.emptyBody}>
                 Load the selected repo path to browse remote Markdown files.
@@ -292,10 +296,10 @@ export default function RepoBrowserScreen({ navigation }) {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f2ec' },
+const createStyles = (colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
-    backgroundColor: '#163329',
+    backgroundColor: colors.header,
     paddingTop: 50,
     paddingBottom: 16,
     paddingHorizontal: 20,
@@ -303,59 +307,59 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  headerTitle: { color: '#fff', fontSize: 22, fontWeight: '700' },
+  headerTitle: { color: colors.headerText, fontSize: 22, fontWeight: '700' },
   hero: {
-    backgroundColor: '#efe7d8',
+    backgroundColor: colors.hero,
     paddingHorizontal: 20,
     paddingVertical: 18,
     borderBottomWidth: 1,
-    borderBottomColor: '#e1d7c5',
+    borderBottomColor: colors.border,
   },
   heroEyebrow: {
-    color: '#8b5e34',
+    color: colors.warning,
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1.1,
     marginBottom: 6,
   },
-  heroTitle: { color: '#2b2318', fontSize: 22, fontWeight: '700', lineHeight: 28 },
-  heroBody: { color: '#655647', fontSize: 14, lineHeight: 20, marginTop: 8 },
+  heroTitle: { color: colors.textStrong, fontSize: 22, fontWeight: '700', lineHeight: 28 },
+  heroBody: { color: colors.textMuted, fontSize: 14, lineHeight: 20, marginTop: 8 },
   content: { padding: 18, gap: 12 },
   sectionLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#6a756f',
+    color: colors.textMuted,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
   chipRow: { flexDirection: 'row', gap: 10 },
   providerChip: {
     borderWidth: 1,
-    borderColor: '#d0d8d3',
+    borderColor: colors.border,
     borderRadius: 999,
     paddingVertical: 10,
     paddingHorizontal: 16,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
   },
-  providerChipText: { color: '#304037', fontWeight: '600' },
+  providerChipText: { color: colors.text, fontWeight: '600' },
   siteGrid: { gap: 10 },
   siteCard: {
     borderWidth: 1,
-    borderColor: '#d6ddd6',
+    borderColor: colors.border,
     borderRadius: 16,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     padding: 14,
   },
   siteCardActive: {
-    borderColor: '#2d6a4f',
-    backgroundColor: '#eef6f1',
+    borderColor: colors.accent,
+    backgroundColor: colors.surfaceMuted,
   },
-  siteCardTitle: { color: '#1d2b24', fontSize: 15, fontWeight: '700', marginBottom: 4 },
-  siteCardTitleActive: { color: '#1d5a3f' },
-  siteCardPath: { color: '#79867f', fontSize: 12, lineHeight: 17 },
+  siteCardTitle: { color: colors.text, fontSize: 15, fontWeight: '700', marginBottom: 4 },
+  siteCardTitleActive: { color: colors.accent },
+  siteCardPath: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
   loadBtn: {
-    backgroundColor: '#2d6a4f',
+    backgroundColor: colors.accent,
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
@@ -366,17 +370,17 @@ const styles = StyleSheet.create({
   loadBtnDisabled: { opacity: 0.7 },
   loadBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   searchInput: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.inputBg,
     borderWidth: 1,
-    borderColor: '#d6ddd6',
+    borderColor: colors.border,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    color: '#1d2b24',
+    color: colors.inputText,
   },
-  errorText: { color: '#ad2f2f', fontSize: 13, lineHeight: 18 },
+  errorText: { color: colors.danger, fontSize: 13, lineHeight: 18 },
   resultsLabel: {
-    color: '#6a756f',
+    color: colors.textMuted,
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -384,16 +388,16 @@ const styles = StyleSheet.create({
   },
   listContent: { paddingBottom: 32 },
   empty: { alignItems: 'center', paddingHorizontal: 32, paddingVertical: 48 },
-  emptyTitle: { color: '#435147', fontSize: 18, fontWeight: '700', marginTop: 12, marginBottom: 6 },
-  emptyBody: { color: '#829087', fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  emptyTitle: { color: colors.text, fontSize: 18, fontWeight: '700', marginTop: 12, marginBottom: 6 },
+  emptyBody: { color: colors.textMuted, fontSize: 14, textAlign: 'center', lineHeight: 20 },
   postCard: {
     marginHorizontal: 18,
     marginBottom: 10,
     padding: 16,
     borderRadius: 16,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: '#dde4de',
+    borderColor: colors.border,
   },
   postHeader: {
     flexDirection: 'row',
@@ -402,6 +406,6 @@ const styles = StyleSheet.create({
     gap: 12,
     marginBottom: 6,
   },
-  postName: { flex: 1, color: '#1d2b24', fontSize: 16, fontWeight: '700' },
-  postPath: { color: '#78847d', fontSize: 12, lineHeight: 18 },
+  postName: { flex: 1, color: colors.text, fontSize: 16, fontWeight: '700' },
+  postPath: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
 })

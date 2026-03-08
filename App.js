@@ -11,6 +11,7 @@ import RepoBrowserScreen from './src/screens/RepoBrowserScreen'
 import SettingsScreen from './src/screens/SettingsScreen'
 import FormatReferenceScreen from './src/screens/FormatReferenceScreen'
 import { consumeSharedFile } from './src/utils/shareIntent'
+import { getNavigationTheme, useAppTheme } from './src/utils/theme'
 
 const Stack = createNativeStackNavigator()
 const navigationRef = createNavigationContainerRef()
@@ -23,6 +24,7 @@ function normalizeSharedFilename(sharedFile) {
 }
 
 export default function App() {
+  const theme = useAppTheme()
   const openSharedFile = useCallback(async () => {
     if (!navigationRef.isReady()) return
 
@@ -72,7 +74,11 @@ export default function App() {
   }, [openSharedFile])
 
   return (
-    <NavigationContainer ref={navigationRef} onReady={openSharedFile}>
+    <NavigationContainer
+      ref={navigationRef}
+      onReady={openSharedFile}
+      theme={getNavigationTheme(theme)}
+    >
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Home" component={HomeScreen} />
         <Stack.Screen name="AddPost" component={AddPostScreen} />

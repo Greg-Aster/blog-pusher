@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import * as ImagePicker from 'expo-image-picker'
 import * as FileSystem from 'expo-file-system/legacy'
 import { Ionicons } from '@expo/vector-icons'
 import { addToQueue } from '../utils/storage'
+import { useAppTheme } from '../utils/theme'
 
 const SITES = [
   { id: 'temporal', label: 'Temporal Flow', color: '#4a90d9' },
@@ -38,6 +39,9 @@ function normalizeSharedFilename(sharedFile) {
 }
 
 export default function AddPostScreen({ navigation, route }) {
+  const theme = useAppTheme()
+  const colors = theme.colors
+  const styles = useMemo(() => createStyles(colors), [colors])
   const [mdFile, setMdFile] = useState(null)
   const [images, setImages] = useState([])
   const [siteId, setSiteId] = useState('temporal')
@@ -174,7 +178,7 @@ export default function AddPostScreen({ navigation, route }) {
           onPress={() => navigation.goBack()}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="arrow-back" size={24} color="#fff" />
+          <Ionicons name="arrow-back" size={24} color={colors.headerText} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Add Post to Queue</Text>
         <View style={{ width: 24 }} />
@@ -189,11 +193,11 @@ export default function AddPostScreen({ navigation, route }) {
             Pick a file from your phone, or share a markdown note directly into Blog Pusher.
           </Text>
           <TouchableOpacity style={styles.pickBtn} onPress={pickMarkdownFile} activeOpacity={0.7}>
-            <Ionicons name="document-text-outline" size={20} color="#2d6a4f" />
+            <Ionicons name="document-text-outline" size={20} color={colors.accent} />
             <Text style={styles.pickBtnText}>
               {mdFile ? mdFile.name : 'Pick .md file from phone'}
             </Text>
-            {mdFile && <Ionicons name="checkmark-circle" size={20} color="#2d6a4f" />}
+            {mdFile && <Ionicons name="checkmark-circle" size={20} color={colors.accent} />}
           </TouchableOpacity>
           {mdFile && (
             <TouchableOpacity
@@ -216,8 +220,8 @@ export default function AddPostScreen({ navigation, route }) {
             <Text style={styles.code}>/blog-images/filename.jpg</Text>
           </Text>
           <TouchableOpacity style={styles.pickBtn} onPress={pickImages} activeOpacity={0.7}>
-            <Ionicons name="image-outline" size={20} color="#4a90d9" />
-            <Text style={[styles.pickBtnText, { color: '#4a90d9' }]}>
+            <Ionicons name="image-outline" size={20} color={colors.link} />
+            <Text style={[styles.pickBtnText, { color: colors.link }]}>
               {images.length > 0 ? `${images.length} image${images.length !== 1 ? 's' : ''} selected` : 'Pick photos from gallery'}
             </Text>
           </TouchableOpacity>
@@ -277,10 +281,10 @@ export default function AddPostScreen({ navigation, route }) {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f0f4f0' },
+const createStyles = (colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.backgroundAlt },
   header: {
-    backgroundColor: '#1a3a2a',
+    backgroundColor: colors.header,
     paddingTop: 50,
     paddingBottom: 14,
     paddingHorizontal: 20,
@@ -288,39 +292,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  headerTitle: { color: '#fff', fontSize: 18, fontWeight: '600' },
+  headerTitle: { color: colors.headerText, fontSize: 18, fontWeight: '600' },
   content: { padding: 16, paddingBottom: 40 },
   section: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 14,
     padding: 16,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#e0e8e0',
+    borderColor: colors.border,
   },
   stepLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#1a3a2a',
+    color: colors.text,
     marginBottom: 6,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
-  hint: { fontSize: 13, color: '#888', marginBottom: 12, lineHeight: 18 },
-  code: { fontFamily: 'monospace', color: '#555', backgroundColor: '#f0f0f0' },
+  hint: { fontSize: 13, color: colors.textMuted, marginBottom: 12, lineHeight: 18 },
+  code: { fontFamily: 'monospace', color: colors.textMuted, backgroundColor: colors.overlay },
   pickBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
     borderWidth: 1.5,
-    borderColor: '#2d6a4f',
+    borderColor: colors.accent,
     borderRadius: 10,
     padding: 12,
     borderStyle: 'dashed',
   },
-  pickBtnText: { flex: 1, color: '#2d6a4f', fontWeight: '600', fontSize: 14 },
+  pickBtnText: { flex: 1, color: colors.accent, fontWeight: '600', fontSize: 14 },
   clearBtn: { marginTop: 8, alignSelf: 'flex-start' },
-  clearBtnText: { color: '#e74c3c', fontSize: 13 },
+  clearBtnText: { color: colors.danger, fontSize: 13 },
   imageRow: { marginTop: 12 },
   thumbWrap: { marginRight: 10, alignItems: 'center', width: 80 },
   thumb: { width: 80, height: 80, borderRadius: 8 },
@@ -328,20 +332,20 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -4,
     right: -4,
-    backgroundColor: '#e74c3c',
+    backgroundColor: colors.danger,
     borderRadius: 9,
   },
-  thumbName: { fontSize: 10, color: '#888', marginTop: 4, width: 80, textAlign: 'center' },
+  thumbName: { fontSize: 10, color: colors.textMuted, marginTop: 4, width: 80, textAlign: 'center' },
   siteRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   siteChip: {
     borderRadius: 20,
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderWidth: 1.5,
-    borderColor: '#ccc',
-    backgroundColor: '#fff',
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
   },
-  siteChipText: { fontSize: 13, fontWeight: '500', color: '#555' },
+  siteChipText: { fontSize: 13, fontWeight: '500', color: colors.textMuted },
   queueBtn: {
     flexDirection: 'row',
     alignItems: 'center',

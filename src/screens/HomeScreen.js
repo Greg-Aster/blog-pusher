@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useMemo } from 'react'
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
 import { deleteDraft, getDraftIdentity, loadDrafts, loadQueue, removeFromQueue } from '../utils/storage'
+import { alpha, useAppTheme } from '../utils/theme'
 
 const SITE_LABELS = {
   temporal: 'Temporal Flow',
@@ -33,6 +34,9 @@ const PROVIDER_LABELS = {
 }
 
 export default function HomeScreen({ navigation }) {
+  const theme = useAppTheme()
+  const colors = theme.colors
+  const styles = useMemo(() => createStyles(colors), [colors])
   const [queue, setQueue] = useState([])
   const [drafts, setDrafts] = useState([])
 
@@ -148,7 +152,7 @@ export default function HomeScreen({ navigation }) {
       title: 'Create New Post',
       body: 'Start a blank Markdown draft on your phone and queue it for push.',
       icon: 'create-outline',
-      color: '#2d6a4f',
+      color: colors.accent,
       onPress: () => navigation.navigate('PostEditor', {
         raw: '',
         filename: 'new-post.md',
@@ -168,7 +172,7 @@ export default function HomeScreen({ navigation }) {
       title: 'Browse Repository',
       body: 'Open an existing remote post from GitHub or GitLab and edit it in place.',
       icon: 'folder-open-outline',
-      color: '#4a90d9',
+      color: colors.link,
       onPress: () => navigation.navigate('RepoBrowser'),
     },
   ]
@@ -192,7 +196,7 @@ export default function HomeScreen({ navigation }) {
               onPress={action.onPress}
               activeOpacity={0.82}
             >
-              <View style={[styles.actionIconWrap, { backgroundColor: `${action.color}18` }]}>
+              <View style={[styles.actionIconWrap, { backgroundColor: alpha(action.color, '20') }]}>
                 <Ionicons name={action.icon} size={22} color={action.color} />
               </View>
               <Text style={styles.actionTitle}>{action.title}</Text>
@@ -267,7 +271,10 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#1a3a2a" />
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor={colors.header}
+      />
 
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Blog Pusher</Text>
@@ -276,13 +283,13 @@ export default function HomeScreen({ navigation }) {
             onPress={() => navigation.navigate('FormatReference')}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="book-outline" size={24} color="#fff" />
+            <Ionicons name="book-outline" size={24} color={colors.headerText} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => navigation.navigate('Settings')}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="settings-outline" size={24} color="#fff" />
+            <Ionicons name="settings-outline" size={24} color={colors.headerText} />
           </TouchableOpacity>
         </View>
       </View>
@@ -295,7 +302,7 @@ export default function HomeScreen({ navigation }) {
           ListHeaderComponent={renderHeader}
           ListEmptyComponent={
             <View style={styles.empty}>
-              <Ionicons name="cloud-upload-outline" size={64} color="#ccc" />
+              <Ionicons name="cloud-upload-outline" size={64} color={colors.textSoft} />
               <Text style={styles.emptyTitle}>Queue is empty</Text>
               <Text style={styles.emptyText}>
                 Create a post, import one, or browse your repo to start editing.
@@ -322,10 +329,10 @@ export default function HomeScreen({ navigation }) {
   )
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f2ec' },
+const createStyles = (colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   header: {
-    backgroundColor: '#1a3a2a',
+    backgroundColor: colors.header,
     paddingTop: 50,
     paddingBottom: 16,
     paddingHorizontal: 20,
@@ -333,26 +340,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  headerTitle: { color: '#fff', fontSize: 22, fontWeight: '700', letterSpacing: 0.5 },
+  headerTitle: { color: colors.headerText, fontSize: 22, fontWeight: '700', letterSpacing: 0.5 },
   headerIcons: { flexDirection: 'row', gap: 18, alignItems: 'center' },
   hero: {
-    backgroundColor: '#efe7d8',
+    backgroundColor: colors.hero,
     paddingHorizontal: 18,
     paddingTop: 18,
     paddingBottom: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#e1d7c5',
+    borderBottomColor: colors.border,
   },
   heroEyebrow: {
-    color: '#8b5e34',
+    color: colors.warning,
     fontSize: 11,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1.2,
     marginBottom: 8,
   },
-  heroTitle: { color: '#2b2318', fontSize: 24, fontWeight: '700', lineHeight: 30 },
-  heroBody: { color: '#635a4f', fontSize: 14, lineHeight: 21, marginTop: 8 },
+  heroTitle: { color: colors.textStrong, fontSize: 24, fontWeight: '700', lineHeight: 30 },
+  heroBody: { color: colors.textMuted, fontSize: 14, lineHeight: 21, marginTop: 8 },
   actionGrid: { padding: 16, gap: 12 },
   draftsSection: { paddingTop: 4, paddingBottom: 10 },
   sectionHeadingRow: {
@@ -362,7 +369,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
-  sectionHint: { fontSize: 12, color: '#7b877f' },
+  sectionHint: { fontSize: 12, color: colors.textMuted },
   draftsRow: {
     paddingHorizontal: 16,
     paddingTop: 10,
@@ -370,11 +377,11 @@ const styles = StyleSheet.create({
   },
   draftCard: {
     width: 236,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e0e6df',
+    borderColor: colors.border,
   },
   draftCardHeader: {
     flexDirection: 'row',
@@ -383,28 +390,28 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   draftTitle: {
-    color: '#1a2e1a',
+    color: colors.text,
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 6,
   },
   draftFilename: {
-    color: '#5f6c63',
+    color: colors.textMuted,
     fontSize: 12,
     marginBottom: 8,
   },
   draftMeta: {
-    color: '#7b877f',
+    color: colors.textMuted,
     fontSize: 12,
     lineHeight: 17,
   },
   actionCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 18,
     padding: 16,
     borderTopWidth: 4,
     borderWidth: 1,
-    borderColor: '#e0e6df',
+    borderColor: colors.border,
   },
   actionIconWrap: {
     width: 42,
@@ -414,12 +421,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
   },
-  actionTitle: { color: '#1a2e1a', fontSize: 17, fontWeight: '700', marginBottom: 6 },
-  actionBody: { color: '#748179', fontSize: 13, lineHeight: 19 },
+  actionTitle: { color: colors.text, fontSize: 17, fontWeight: '700', marginBottom: 6 },
+  actionBody: { color: colors.textMuted, fontSize: 13, lineHeight: 19 },
   queueLabel: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#6f7b74',
+    color: colors.textMuted,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     paddingHorizontal: 16,
@@ -428,7 +435,7 @@ const styles = StyleSheet.create({
   list: { paddingBottom: 40 },
   emptyList: { flexGrow: 1, paddingBottom: 40 },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 14,
     marginHorizontal: 16,
@@ -452,18 +459,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: colors.overlay,
     borderRadius: 6,
     paddingHorizontal: 6,
     paddingVertical: 3,
   },
-  imageBadgeText: { fontSize: 11, color: '#666', fontWeight: '600' },
-  cardTitle: { fontSize: 15, fontWeight: '600', color: '#1a2e1a', marginBottom: 4 },
-  cardDate: { fontSize: 11, color: '#aaa', marginBottom: 6 },
+  imageBadgeText: { fontSize: 11, color: colors.textMuted, fontWeight: '600' },
+  cardTitle: { fontSize: 15, fontWeight: '600', color: colors.text, marginBottom: 4 },
+  cardDate: { fontSize: 11, color: colors.textSoft, marginBottom: 6 },
   cardMeta: {
     alignSelf: 'flex-start',
-    color: '#6f7b74',
-    backgroundColor: '#eef2ee',
+    color: colors.badgeText,
+    backgroundColor: colors.badgeBg,
     borderRadius: 999,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -473,7 +480,7 @@ const styles = StyleSheet.create({
   },
   pushRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   pushText: { fontSize: 12, fontWeight: '600' },
-  pushHint: { fontSize: 12, color: '#bbb' },
+  pushHint: { fontSize: 12, color: colors.textSoft },
   pushIconBtn: { marginRight: 2 },
   empty: {
     flex: 1,
@@ -481,10 +488,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 40,
   },
-  emptyTitle: { fontSize: 20, fontWeight: '600', color: '#444', marginTop: 16, marginBottom: 8 },
-  emptyText: { fontSize: 14, color: '#888', textAlign: 'center', lineHeight: 20 },
+  emptyTitle: { fontSize: 20, fontWeight: '600', color: colors.text, marginTop: 16, marginBottom: 8 },
+  emptyText: { fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 20 },
   queueFooter: {
-    color: '#7b877f',
+    color: colors.textMuted,
     fontSize: 12,
     textAlign: 'center',
     paddingTop: 8,
