@@ -16,9 +16,10 @@ import { Ionicons } from '@expo/vector-icons'
 import Markdown from '@ronradtke/react-native-markdown-display'
 import * as ImagePicker from 'expo-image-picker'
 import { createPostDraft, serializeDraft } from '../utils/frontmatter'
-import { saveDraft, addToQueue, updateQueueItem } from '../utils/storage'
+import { saveDraft, addToQueue, updateQueueItem, loadSettings } from '../utils/storage'
+import { listRepoPosts } from '../utils/gitlab'
 import { useAppTheme } from '../utils/theme'
-import { getSiteTheme, SITE_THEMES } from '../utils/siteThemes'
+import { SITE_THEMES } from '../utils/siteThemes'
 
 const SITES = SITE_THEMES
 
@@ -46,6 +47,28 @@ const MD_ACTIONS = [
   { label: 'Link', insert: '[', wrap: true, suffix: '](url)' },
   { label: 'Img', insert: '![alt](', wrap: false, suffix: ')' },
   { label: '---', insert: '\n---\n', wrap: false },
+]
+
+const EDITOR_PANELS = [
+  { id: 'live', label: 'Live', icon: 'sparkles-outline' },
+  { id: 'commands', label: 'Insert', icon: 'flash-outline' },
+  { id: 'outline', label: 'Outline', icon: 'list-outline' },
+  { id: 'links', label: 'Links', icon: 'link-outline' },
+  { id: 'history', label: 'History', icon: 'time-outline' },
+]
+
+const INSERT_COMMANDS = [
+  { id: 'heading1', label: 'Heading 1', icon: 'text-outline', keywords: 'h1 title heading', description: 'Insert a top-level heading' },
+  { id: 'heading2', label: 'Heading 2', icon: 'text-outline', keywords: 'h2 section heading', description: 'Insert a section heading' },
+  { id: 'heading3', label: 'Heading 3', icon: 'text-outline', keywords: 'h3 subsection heading', description: 'Insert a smaller heading' },
+  { id: 'calloutNote', label: 'Note Callout', icon: 'chatbox-ellipses-outline', keywords: 'callout note aside', description: 'Insert a note-style callout block' },
+  { id: 'calloutWarn', label: 'Warning Callout', icon: 'warning-outline', keywords: 'callout warning alert', description: 'Insert a warning callout block' },
+  { id: 'codeFence', label: 'Code Block', icon: 'code-slash-outline', keywords: 'code fence snippet', description: 'Insert a fenced code block' },
+  { id: 'table', label: 'Table', icon: 'grid-outline', keywords: 'table columns rows', description: 'Insert a starter Markdown table' },
+  { id: 'divider', label: 'Divider', icon: 'remove-outline', keywords: 'divider rule hr', description: 'Insert a horizontal rule' },
+  { id: 'checklist', label: 'Checklist', icon: 'checkbox-outline', keywords: 'task checklist todo', description: 'Insert a task list block' },
+  { id: 'imageEmbed', label: 'Image Embed', icon: 'image-outline', keywords: 'image photo embed', description: 'Pick a photo and insert Markdown' },
+  { id: 'imageBlock', label: 'Image Block', icon: 'images-outline', keywords: 'image caption hero photo', description: 'Insert a structured image block' },
 ]
 
 // Frontmatter templates per site
@@ -164,15 +187,142 @@ function normalizeAttachedImages(images = []) {
       uri: image?.uri || '',
       filename,
       alt: image?.alt !== undefined ? String(image.alt) : formatImageAlt(filename),
+      caption: image?.caption !== undefined ? String(image.caption) : '',
       publicPath: image?.publicPath || `/blog-images/${filename}`,
     })
   }
   return normalized
 }
 
-function buildImageMarkdown(image) {
+function buildImageMarkdown(image, options = {}) {
   const alt = String(image?.alt || '').trim() || formatImageAlt(image?.filename)
-  return `![${alt}](${image?.publicPath || `/blog-images/${image?.filename}`})`
+  const imageLine = `![${alt}](${image?.publicPath || `/blog-images/${image?.filename}`})`
+  const caption = String(options.caption ?? image?.caption ?? '').trim()
+  if (options.structured && caption) {
+    return `${imageLine}\n*${caption}*`
+  }
+  return imageLine
+}
+
+function getLineBounds(text, pos) {
+  const start = text.lastIndexOf('\n', Math.max(0, pos - 1)) + 1
+  let end = text.indexOf('\n', pos)
+  if (end === -1) end = text.length
+  return { start, end }
+}
+
+function replaceRange(text, start, end, replacement) {
+  return text.slice(0, start) + replacement + text.slice(end)
+}
+
+function getSlashTrigger(text, pos) {
+  const { start } = getLineBounds(text, pos)
+  const lineBeforeCursor = text.slice(start, pos)
+  const match = lineBeforeCursor.match(/^(\s*)\/([\w-]*)$/)
+  if (!match) return null
+  return {
+    start,
+    end: pos,
+    query: match[2].toLowerCase(),
+    indent: match[1] || '',
+  }
+}
+
+function humanizeSlug(slug = '') {
+  return String(slug || '')
+    .replace(/^\d{4}-\d{2}-\d{2}-/, '')
+    .replace(/\.[^.]+$/, '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function getPostSlugFromPath(path = '') {
+  const name = String(path || '').split('/').pop() || ''
+  return name.replace(/\.(md|mdx|txt)$/i, '')
+}
+
+function getPostUrlFromPath(path = '') {
+  const slug = getPostSlugFromPath(path)
+  return slug ? `/posts/${slug}/` : '/posts/'
+}
+
+function extractHeadingOutline(body = '') {
+  const lines = String(body || '').split('\n')
+  const outline = []
+  let offset = 0
+  for (const line of lines) {
+    const match = line.match(/^(#{1,6})\s+(.+?)\s*$/)
+    if (match) {
+      outline.push({
+        id: `${offset}:${match[2]}`,
+        depth: match[1].length,
+        text: match[2],
+        start: offset,
+      })
+    }
+    offset += line.length + 1
+  }
+  return outline
+}
+
+function getFocusedMarkdownBlock(body = '', cursor = 0) {
+  const text = String(body || '')
+  if (!text.trim()) return ''
+
+  const lines = text.split('\n')
+  let lineIndex = 0
+  let offset = 0
+  for (let i = 0; i < lines.length; i++) {
+    const nextOffset = offset + lines[i].length + 1
+    if (cursor <= nextOffset) {
+      lineIndex = i
+      break
+    }
+    offset = nextOffset
+  }
+
+  let start = lineIndex
+  while (start > 0 && lines[start - 1].trim() !== '') start -= 1
+  let end = lineIndex
+  while (end < lines.length - 1 && lines[end + 1].trim() !== '') end += 1
+
+  return lines.slice(start, end + 1).join('\n').trim()
+}
+
+function chooseLinkProvider(settings, draft) {
+  if (draft?.remoteProvider) return draft.remoteProvider
+  const github = settings?.providers?.github || {}
+  if (github.token && github.owner && github.repo) return 'github'
+  return 'gitlab'
+}
+
+function buildHistorySnapshot(draft) {
+  return {
+    id: `${Date.now()}`,
+    savedAt: new Date().toISOString(),
+    title: draft.title || draft.filename || 'Untitled draft',
+    filename: draft.filename,
+    content: serializeDraft({ ...draft, dirty: false }),
+    attachedImages: normalizeAttachedImages(draft.attachedImages || []),
+  }
+}
+
+function mergeHistorySnapshot(draft) {
+  const snapshot = buildHistorySnapshot(draft)
+  const history = Array.isArray(draft.history) ? draft.history : []
+  if (history[0]?.content === snapshot.content) {
+    return {
+      ...draft,
+      history,
+      lastSavedAt: history[0]?.savedAt || snapshot.savedAt,
+    }
+  }
+  return {
+    ...draft,
+    history: [snapshot, ...history].slice(0, 12),
+    lastSavedAt: snapshot.savedAt,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -300,10 +450,17 @@ export default function PostEditorScreen({ navigation, route }) {
     return {
       ...initialDraft,
       attachedImages: normalizeAttachedImages(initialDraft.attachedImages),
+      history: Array.isArray(initialDraft.history) ? initialDraft.history : [],
     }
   })
 
   const [activeTab, setActiveTab] = useState('meta')
+  const [editorPanel, setEditorPanel] = useState('live')
+  const [editorSelection, setEditorSelection] = useState({ start: 0, end: 0 })
+  const [repoLinks, setRepoLinks] = useState([])
+  const [linkQuery, setLinkQuery] = useState('')
+  const [loadingLinks, setLoadingLinks] = useState(false)
+  const [linkError, setLinkError] = useState('')
   const [saving, setSaving] = useState(false)
   const saveTimer = useRef(null)
   const bodyRef = useRef(null)
@@ -317,17 +474,26 @@ export default function PostEditorScreen({ navigation, route }) {
     latestDraft.current = draft
   }, [draft])
 
+  const prepareDraftForPersistence = useCallback((sourceDraft) => {
+    return mergeHistorySnapshot({ ...sourceDraft, dirty: false })
+  }, [])
+
   // Autosave 1.5s after last edit
   const scheduleSave = useCallback((updated) => {
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {
       setSaving(true)
-      await saveDraft(updated)
+      const persisted = prepareDraftForPersistence(updated)
+      await saveDraft(persisted)
       hasUnsavedChanges.current = false
-      setDraft(prev => prev.dirty ? { ...prev, dirty: false } : prev)
+      setDraft(prev => (
+        prev.updatedAt === updated.updatedAt
+          ? persisted
+          : prev
+      ))
       setSaving(false)
     }, 1500)
-  }, [])
+  }, [prepareDraftForPersistence])
 
   const flushPendingDraftSave = useCallback((resetUi = false) => {
     if (!hasUnsavedChanges.current) return
@@ -338,11 +504,12 @@ export default function PostEditorScreen({ navigation, route }) {
       saveTimer.current = null
     }
     hasUnsavedChanges.current = false
+    const persisted = prepareDraftForPersistence(pending)
     if (resetUi) {
-      setDraft(prev => prev.dirty ? { ...prev, dirty: false } : prev)
+      setDraft(prev => (prev.updatedAt === pending.updatedAt ? persisted : prev))
     }
-    saveDraft({ ...pending, dirty: false }).catch(() => {})
-  }, [])
+    saveDraft(persisted).catch(() => {})
+  }, [prepareDraftForPersistence])
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', state => {
@@ -395,11 +562,18 @@ export default function PostEditorScreen({ navigation, route }) {
   }
 
   function moveCursor(position) {
+    bodySelection.current = { start: position, end: position }
+    setEditorSelection({ start: position, end: position })
     setTimeout(() => {
       bodyRef.current?.setNativeProps?.({
         selection: { start: position, end: position },
       })
     }, 50)
+  }
+
+  function focusCursor(position) {
+    bodyRef.current?.focus?.()
+    moveCursor(position)
   }
 
   function insertBodySnippet(snippet, cursorOffset = snippet.length) {
@@ -419,6 +593,17 @@ export default function PostEditorScreen({ navigation, route }) {
     updateDraft({ attachedImages: nextImages })
   }
 
+  function moveAttachedImage(id, direction) {
+    const images = [...(draft.attachedImages || [])]
+    const index = images.findIndex(image => image.id === id)
+    if (index === -1) return
+    const nextIndex = index + direction
+    if (nextIndex < 0 || nextIndex >= images.length) return
+    const [moved] = images.splice(index, 1)
+    images.splice(nextIndex, 0, moved)
+    updateDraft({ attachedImages: images })
+  }
+
   function removeAttachedImage(id) {
     const removed = (draft.attachedImages || []).find(image => image.id === id)
     const nextImages = (draft.attachedImages || []).filter(image => image.id !== id)
@@ -429,14 +614,56 @@ export default function PostEditorScreen({ navigation, route }) {
     updateDraft(changes)
   }
 
-  function insertAttachedImage(image) {
+  function insertAttachedImage(image, options = {}) {
     const text = draft.body || ''
     const { start, end } = bodySelection.current
-    const markdown = buildImageMarkdown(image)
+    const markdown = buildImageMarkdown(image, {
+      structured: options.structured,
+      caption: options.caption,
+    })
     const prefix = start > 0 && text[start - 1] !== '\n' ? '\n\n' : ''
     const suffix = text[end] && text[end] !== '\n' ? '\n\n' : '\n'
     const snippet = `${prefix}${markdown}${suffix}`
     insertBodySnippet(snippet)
+  }
+
+  function insertInternalLink(post) {
+    const { start, end } = bodySelection.current
+    const text = draft.body || ''
+    const selected = text.slice(start, end)
+    const slug = getPostSlugFromPath(post.path)
+    const label = selected || humanizeSlug(slug) || post.name
+    const snippet = `[${label}](${getPostUrlFromPath(post.path)})`
+    insertBodySnippet(snippet, snippet.length)
+    setEditorPanel('live')
+  }
+
+  function restoreHistorySnapshot(snapshot) {
+    if (!snapshot?.content) return
+    const restoredDraft = createPostDraft({
+      raw: snapshot.content,
+      filename: snapshot.filename || draft.filename,
+      siteId: draft.repoSiteId,
+      images: snapshot.attachedImages || draft.attachedImages,
+      destination: draft.remoteProvider,
+      remoteFile: draft.remotePath ? {
+        provider: draft.remoteProvider,
+        path: draft.remotePath,
+        sha: draft.sourceSha,
+        lastCommitId: draft.sourceLastCommitId,
+        branch: draft.remoteBranch,
+      } : null,
+    })
+
+    updateDraft({
+      ...restoredDraft,
+      id: draft.id,
+      rawOriginal: draft.rawOriginal,
+      history: draft.history || [],
+      attachedImages: normalizeAttachedImages(snapshot.attachedImages || restoredDraft.attachedImages),
+    })
+    setEditorPanel('live')
+    moveCursor(0)
   }
 
   // ---- Slug auto-generation ----
@@ -489,12 +716,60 @@ export default function PostEditorScreen({ navigation, route }) {
     }
 
     updateField('body', newText)
-    // Try to set cursor position after React renders
-    setTimeout(() => {
-      bodyRef.current?.setNativeProps?.({
-        selection: { start: newCursorPos, end: newCursorPos },
-      })
-    }, 50)
+    moveCursor(newCursorPos)
+  }
+
+  function handleInsertCommand(command) {
+    const slashTrigger = getSlashTrigger(draft.body || '', bodySelection.current.start)
+    const insertAtLine = (snippet, cursorOffset = snippet.length) => {
+      if (!slashTrigger) {
+        insertBodySnippet(snippet, cursorOffset)
+        return
+      }
+      const text = draft.body || ''
+      const nextBody = replaceRange(text, slashTrigger.start, slashTrigger.end, `${slashTrigger.indent}${snippet}`)
+      updateField('body', nextBody)
+      moveCursor(slashTrigger.start + slashTrigger.indent.length + cursorOffset)
+    }
+
+    switch (command.id) {
+      case 'heading1':
+        insertAtLine('# ', 2)
+        break
+      case 'heading2':
+        insertAtLine('## ', 3)
+        break
+      case 'heading3':
+        insertAtLine('### ', 4)
+        break
+      case 'calloutNote':
+        insertAtLine('> [!NOTE]\n> ', 12)
+        break
+      case 'calloutWarn':
+        insertAtLine('> [!WARNING]\n> ', 15)
+        break
+      case 'codeFence':
+        insertAtLine('```md\n\n```', 6)
+        break
+      case 'table':
+        insertAtLine('| Column | Value |\n| --- | --- |\n|  |  |', 35)
+        break
+      case 'divider':
+        insertAtLine('---', 3)
+        break
+      case 'checklist':
+        insertAtLine('- [ ] ', 6)
+        break
+      case 'imageEmbed':
+        handlePickImage('plain')
+        break
+      case 'imageBlock':
+        handlePickImage('structured')
+        break
+      default:
+        break
+    }
+    setEditorPanel('live')
   }
 
   // ---- Smart text handling ----
@@ -508,11 +783,7 @@ export default function PostEditorScreen({ navigation, route }) {
         const result = handleNewline(oldText, bodySelection.current.start)
         if (result) {
           updateField('body', result.text)
-          setTimeout(() => {
-            bodyRef.current?.setNativeProps?.({
-              selection: { start: result.cursor, end: result.cursor },
-            })
-          }, 50)
+          moveCursor(result.cursor)
           return
         }
       }
@@ -532,11 +803,7 @@ export default function PostEditorScreen({ navigation, route }) {
         const withClose = newText.slice(0, insertedPos + 1) + closer + newText.slice(insertedPos + 1)
         updateField('body', withClose)
         const cursorPos = insertedPos + 1
-        setTimeout(() => {
-          bodyRef.current?.setNativeProps?.({
-            selection: { start: cursorPos, end: cursorPos },
-          })
-        }, 50)
+        moveCursor(cursorPos)
         return
       }
     }
@@ -544,16 +811,53 @@ export default function PostEditorScreen({ navigation, route }) {
     updateField('body', newText)
   }
 
+  useEffect(() => {
+    if (editorPanel !== 'links') return
+
+    let cancelled = false
+    async function loadRepoLinks() {
+      setLoadingLinks(true)
+      setLinkError('')
+      const settings = await loadSettings()
+      const siteConfig = settings?.sites?.find(site => site.id === draft.repoSiteId)
+      if (!siteConfig?.path) {
+        if (!cancelled) {
+          setRepoLinks([])
+          setLinkError('This site has no configured content path in Settings.')
+          setLoadingLinks(false)
+        }
+        return
+      }
+
+      const provider = chooseLinkProvider(settings, draft)
+      const result = await listRepoPosts(settings, siteConfig.path, provider)
+      if (cancelled) return
+
+      if (result.ok) {
+        setRepoLinks((result.posts || []).filter(post => post.path !== draft.remotePath))
+      } else {
+        setRepoLinks([])
+        setLinkError(result.error || 'Could not load repo posts for links.')
+      }
+      setLoadingLinks(false)
+    }
+
+    loadRepoLinks()
+    return () => {
+      cancelled = true
+    }
+  }, [editorPanel, draft.remotePath, draft.repoSiteId, draft.remoteProvider])
+
   // ---- Image picker ----
-  async function handlePickImage() {
+  async function handlePickImage(insertMode = 'plain') {
     Alert.alert('Insert Image', 'Choose image source', [
       {
         text: 'Photo Library',
-        onPress: () => pickImage(ImagePicker.launchImageLibraryAsync),
+        onPress: () => pickImage(ImagePicker.launchImageLibraryAsync, insertMode),
       },
       {
         text: 'Camera',
-        onPress: () => pickImage(ImagePicker.launchCameraAsync),
+        onPress: () => pickImage(ImagePicker.launchCameraAsync, insertMode),
       },
       {
         text: 'URL',
@@ -563,7 +867,7 @@ export default function PostEditorScreen({ navigation, route }) {
     ])
   }
 
-  async function pickImage(launcher) {
+  async function pickImage(launcher, insertMode = 'plain') {
     const permission = launcher === ImagePicker.launchCameraAsync
       ? await ImagePicker.requestCameraPermissionsAsync()
       : await ImagePicker.requestMediaLibraryPermissionsAsync()
@@ -604,7 +908,7 @@ export default function PostEditorScreen({ navigation, route }) {
     })
 
     const snippet = addedImages
-      .map(image => buildImageMarkdown(image))
+      .map(image => buildImageMarkdown(image, { structured: insertMode === 'structured' }))
       .join('\n\n')
 
     const heroImage = draft.heroImage || addedImages[0]?.publicPath || ''
@@ -653,42 +957,44 @@ export default function PostEditorScreen({ navigation, route }) {
 
   // ---- Save to queue ----
   async function handleSaveToQueue() {
-    const content = serializeDraft(draft)
+    const queuedDraft = prepareDraftForPersistence(draft)
+    const content = serializeDraft(queuedDraft)
     hasUnsavedChanges.current = false
+    setDraft(queuedDraft)
     if (isFromQueue) {
       await updateQueueItem(params.queueItem.id, {
         content,
-        filename: draft.filename,
-        siteId: draft.repoSiteId,
-        images: draft.attachedImages,
-        destination: draft.remoteProvider || params.queueItem.destination || null,
-        remoteProvider: draft.remoteProvider || null,
-        remotePath: draft.remotePath || null,
-        sourceSha: draft.sourceSha || null,
-        sourceLastCommitId: draft.sourceLastCommitId || null,
-        remoteBranch: draft.remoteBranch || null,
+        filename: queuedDraft.filename,
+        siteId: queuedDraft.repoSiteId,
+        images: queuedDraft.attachedImages,
+        destination: queuedDraft.remoteProvider || params.queueItem.destination || null,
+        remoteProvider: queuedDraft.remoteProvider || null,
+        remotePath: queuedDraft.remotePath || null,
+        sourceSha: queuedDraft.sourceSha || null,
+        sourceLastCommitId: queuedDraft.sourceLastCommitId || null,
+        remoteBranch: queuedDraft.remoteBranch || null,
       })
-      setDraft(prev => prev.dirty ? { ...prev, dirty: false } : prev)
+      saveDraft(queuedDraft).catch(() => {})
       Alert.alert('Updated', 'Queue item updated with your edits.', [
         { text: 'OK', onPress: () => navigation.goBack() },
       ])
     } else {
       await addToQueue({
-        id: draft.id,
-        filename: draft.filename,
+        id: queuedDraft.id,
+        filename: queuedDraft.filename,
         content,
-        siteId: draft.repoSiteId,
-        images: draft.attachedImages,
-        destination: draft.remoteProvider || null,
-        remoteProvider: draft.remoteProvider || null,
-        remotePath: draft.remotePath || null,
-        sourceSha: draft.sourceSha || null,
-        sourceLastCommitId: draft.sourceLastCommitId || null,
-        remoteBranch: draft.remoteBranch || null,
+        siteId: queuedDraft.repoSiteId,
+        images: queuedDraft.attachedImages,
+        destination: queuedDraft.remoteProvider || null,
+        remoteProvider: queuedDraft.remoteProvider || null,
+        remotePath: queuedDraft.remotePath || null,
+        sourceSha: queuedDraft.sourceSha || null,
+        sourceLastCommitId: queuedDraft.sourceLastCommitId || null,
+        remoteBranch: queuedDraft.remoteBranch || null,
         addedAt: new Date().toISOString(),
       })
-      setDraft(prev => prev.dirty ? { ...prev, dirty: false } : prev)
-      Alert.alert('Queued', `"${draft.filename}" added to push queue.`, [
+      saveDraft(queuedDraft).catch(() => {})
+      Alert.alert('Queued', `"${queuedDraft.filename}" added to push queue.`, [
         { text: 'OK', onPress: () => navigation.navigate('Home') },
       ])
     }
@@ -702,6 +1008,37 @@ export default function PostEditorScreen({ navigation, route }) {
     const lines = text.split('\n').length
     return { chars, words, lines }
   }, [draft.body])
+
+  const slashTrigger = useMemo(
+    () => getSlashTrigger(draft.body || '', editorSelection.start),
+    [draft.body, editorSelection.start]
+  )
+
+  const filteredInsertCommands = useMemo(() => {
+    const needle = (slashTrigger?.query || '').trim()
+    if (!needle) return INSERT_COMMANDS
+    return INSERT_COMMANDS.filter(command => (
+      command.label.toLowerCase().includes(needle) ||
+      command.keywords.includes(needle)
+    ))
+  }, [slashTrigger])
+
+  const outline = useMemo(() => extractHeadingOutline(draft.body), [draft.body])
+  const livePreviewBody = useMemo(
+    () => getFocusedMarkdownBlock(draft.body, editorSelection.start),
+    [draft.body, editorSelection.start]
+  )
+
+  const filteredRepoLinks = useMemo(() => {
+    const needle = linkQuery.trim().toLowerCase()
+    if (!needle) return repoLinks
+    return repoLinks.filter(post => {
+      const name = String(post.name || '').toLowerCase()
+      const path = String(post.path || '').toLowerCase()
+      const label = humanizeSlug(getPostSlugFromPath(post.path)).toLowerCase()
+      return name.includes(needle) || path.includes(needle) || label.includes(needle)
+    })
+  }, [repoLinks, linkQuery])
 
   // ---- Render tabs ----
   const activeSite = SITES.find(s => s.id === draft.repoSiteId)
@@ -769,7 +1106,6 @@ export default function PostEditorScreen({ navigation, route }) {
 
       {activeTab === 'edit' && (
         <View style={styles.tabContent}>
-          {/* Toolbar */}
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -786,20 +1122,101 @@ export default function PostEditorScreen({ navigation, route }) {
               </TouchableOpacity>
             ))}
             <View style={styles.toolbarDivider} />
-              <TouchableOpacity
-                style={styles.toolbarBtn}
-                onPress={handlePickImage}
-              >
+            <TouchableOpacity
+              style={styles.toolbarBtn}
+              onPress={() => handlePickImage('plain')}
+            >
               <Ionicons name="image-outline" size={18} color={colors.accent} />
-              </TouchableOpacity>
-            </ScrollView>
+            </TouchableOpacity>
+          </ScrollView>
+
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.panelBar}
+            contentContainerStyle={styles.panelBarInner}
+          >
+            {EDITOR_PANELS.map(panel => {
+              const active = (slashTrigger && panel.id === 'commands') || (!slashTrigger && editorPanel === panel.id)
+              return (
+                <TouchableOpacity
+                  key={panel.id}
+                  style={[styles.panelChip, active && styles.panelChipActive]}
+                  onPress={() => setEditorPanel(panel.id)}
+                >
+                  <Ionicons
+                    name={panel.icon}
+                    size={15}
+                    color={active ? colors.headerText : colors.textMuted}
+                  />
+                  <Text style={[styles.panelChipText, active && styles.panelChipTextActive]}>
+                    {panel.label}
+                  </Text>
+                </TouchableOpacity>
+              )
+            })}
+          </ScrollView>
+
+          {(slashTrigger || editorPanel === 'commands') ? (
+            <InsertCommandPanel
+              commands={filteredInsertCommands}
+              slashTrigger={slashTrigger}
+              onInsert={handleInsertCommand}
+              colors={colors}
+              styles={styles}
+            />
+          ) : null}
+
+          {editorPanel === 'live' ? (
+            <LivePreviewPanel
+              title={draft.title}
+              body={livePreviewBody}
+              markdownStyles={markdownStyles}
+              colors={colors}
+              styles={styles}
+            />
+          ) : null}
+
+          {editorPanel === 'outline' ? (
+            <OutlinePanel
+              headings={outline}
+              onSelect={focusCursor}
+              colors={colors}
+              styles={styles}
+            />
+          ) : null}
+
+          {editorPanel === 'links' ? (
+            <InternalLinkPanel
+              posts={filteredRepoLinks}
+              loading={loadingLinks}
+              error={linkError}
+              query={linkQuery}
+              onQueryChange={setLinkQuery}
+              onInsert={insertInternalLink}
+              styles={styles}
+              colors={colors}
+            />
+          ) : null}
+
+          {editorPanel === 'history' ? (
+            <DraftHistoryPanel
+              history={draft.history || []}
+              onRestore={restoreHistorySnapshot}
+              styles={styles}
+              colors={colors}
+            />
+          ) : null}
+
           <ImageManager
             images={draft.attachedImages || []}
             heroImage={draft.heroImage}
-            onAddImage={handlePickImage}
+            onAddImage={() => handlePickImage('plain')}
             onInsertImage={insertAttachedImage}
+            onInsertStructuredImage={image => insertAttachedImage(image, { structured: true })}
             onSetHeroImage={image => updateField('heroImage', image.publicPath)}
             onUpdateImage={updateAttachedImage}
+            onMoveImage={moveAttachedImage}
             onRemoveImage={removeAttachedImage}
             colors={colors}
             styles={styles}
@@ -811,13 +1228,14 @@ export default function PostEditorScreen({ navigation, route }) {
             onChangeText={handleBodyChange}
             onSelectionChange={e => {
               bodySelection.current = e.nativeEvent.selection
+              setEditorSelection(e.nativeEvent.selection)
             }}
             placeholder="Write your post in Markdown..."
             placeholderTextColor={colors.placeholder}
             multiline
             textAlignVertical="top"
             autoCapitalize="sentences"
-            autoCorrect
+            autoCorrect={false}
           />
           {/* Word count bar */}
           <View style={styles.statsBar}>
@@ -1032,8 +1450,10 @@ function ImageManager({
   heroImage,
   onAddImage,
   onInsertImage,
+  onInsertStructuredImage,
   onSetHeroImage,
   onUpdateImage,
+  onMoveImage,
   onRemoveImage,
   colors,
   styles,
@@ -1100,26 +1520,57 @@ function ImageManager({
                   placeholder="Alt text"
                   placeholderTextColor={colors.placeholder}
                 />
+                <TextInput
+                  style={styles.imageAltInput}
+                  value={image.caption || ''}
+                  onChangeText={value => onUpdateImage(image.id, { caption: value })}
+                  placeholder="Caption"
+                  placeholderTextColor={colors.placeholder}
+                />
 
                 <View style={styles.imageActionRow}>
                   <TouchableOpacity
                     style={styles.imageActionBtn}
-                  onPress={() => onInsertImage(image)}
-                >
+                    onPress={() => onInsertImage(image)}
+                  >
                     <Ionicons name="enter-outline" size={15} color={colors.accent} />
                     <Text style={styles.imageActionText}>Insert</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.imageActionBtn}
-                  onPress={() => onSetHeroImage(image)}
-                >
-                    <Ionicons name="image-outline" size={15} color={colors.warning} />
-                    <Text style={styles.imageActionText}>Set Hero</Text>
+                    onPress={() => onInsertStructuredImage(image)}
+                  >
+                    <Ionicons name="albums-outline" size={15} color={colors.link} />
+                    <Text style={styles.imageActionText}>Block</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.imageActionBtn}
-                  onPress={() => onRemoveImage(image.id)}
-                >
+                    onPress={() => onSetHeroImage(image)}
+                  >
+                    <Ionicons name="image-outline" size={15} color={colors.warning} />
+                    <Text style={styles.imageActionText}>Set Hero</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.imageActionRow}>
+                  <TouchableOpacity
+                    style={styles.imageActionBtn}
+                    onPress={() => onMoveImage(image.id, -1)}
+                  >
+                    <Ionicons name="arrow-back-outline" size={15} color={colors.textMuted} />
+                    <Text style={styles.imageActionText}>Earlier</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.imageActionBtn}
+                    onPress={() => onMoveImage(image.id, 1)}
+                  >
+                    <Ionicons name="arrow-forward-outline" size={15} color={colors.textMuted} />
+                    <Text style={styles.imageActionText}>Later</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.imageActionBtn}
+                    onPress={() => onRemoveImage(image.id)}
+                  >
                     <Ionicons name="trash-outline" size={15} color={colors.danger} />
                     <Text style={styles.imageActionText}>Remove</Text>
                   </TouchableOpacity>
@@ -1128,6 +1579,178 @@ function ImageManager({
             )
           })}
         </ScrollView>
+      )}
+    </View>
+  )
+}
+
+function InsertCommandPanel({ commands, slashTrigger, onInsert, colors, styles }) {
+  return (
+    <View style={styles.helperPanel}>
+      <View style={styles.helperPanelHeader}>
+        <Text style={styles.helperPanelTitle}>
+          {slashTrigger ? `Insert “/${slashTrigger.query}”` : 'Insert Blocks'}
+        </Text>
+        <Text style={styles.helperPanelHint}>
+          Headings, callouts, code, tables, and image embeds.
+        </Text>
+      </View>
+      <View style={styles.commandList}>
+        {commands.map(command => (
+          <TouchableOpacity
+            key={command.id}
+            style={styles.commandCard}
+            onPress={() => onInsert(command)}
+          >
+            <Ionicons name={command.icon} size={18} color={colors.accent} />
+            <View style={styles.commandTextWrap}>
+              <Text style={styles.commandTitle}>{command.label}</Text>
+              <Text style={styles.commandHint}>{command.description}</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  )
+}
+
+function LivePreviewPanel({ title, body, markdownStyles, colors, styles }) {
+  const preview = body || title
+  return (
+    <View style={styles.helperPanel}>
+      <View style={styles.helperPanelHeader}>
+        <Text style={styles.helperPanelTitle}>Live Formatting</Text>
+        <Text style={styles.helperPanelHint}>
+          Preview of the block around your cursor.
+        </Text>
+      </View>
+      {preview ? (
+        <View style={styles.livePreviewBox}>
+          <Markdown style={markdownStyles}>
+            {title && !body ? `# ${title}` : preview}
+          </Markdown>
+        </View>
+      ) : (
+        <Text style={styles.helperEmptyText}>Move the cursor into a paragraph or heading to preview it here.</Text>
+      )}
+    </View>
+  )
+}
+
+function OutlinePanel({ headings, onSelect, styles }) {
+  return (
+    <View style={styles.helperPanel}>
+      <View style={styles.helperPanelHeader}>
+        <Text style={styles.helperPanelTitle}>Document Outline</Text>
+        <Text style={styles.helperPanelHint}>
+          Jump through the post by heading.
+        </Text>
+      </View>
+      {headings.length > 0 ? (
+        <View style={styles.outlineList}>
+          {headings.map(heading => (
+            <TouchableOpacity
+              key={heading.id}
+              style={[styles.outlineItem, { paddingLeft: 12 + ((heading.depth - 1) * 12) }]}
+              onPress={() => onSelect(heading.start)}
+            >
+              <Text style={styles.outlineText} numberOfLines={1}>
+                {heading.text}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.helperEmptyText}>Add `#`, `##`, or `###` headings to build an outline.</Text>
+      )}
+    </View>
+  )
+}
+
+function InternalLinkPanel({
+  posts,
+  loading,
+  error,
+  query,
+  onQueryChange,
+  onInsert,
+  styles,
+  colors,
+}) {
+  return (
+    <View style={styles.helperPanel}>
+      <View style={styles.helperPanelHeader}>
+        <Text style={styles.helperPanelTitle}>Internal Links</Text>
+        <Text style={styles.helperPanelHint}>
+          Insert a site post link as `/posts/slug/`.
+        </Text>
+      </View>
+      <TextInput
+        style={styles.helperSearchInput}
+        value={query}
+        onChangeText={onQueryChange}
+        placeholder="Search repo posts"
+        placeholderTextColor={colors.placeholder}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+      {loading ? (
+        <Text style={styles.helperEmptyText}>Loading repo posts…</Text>
+      ) : error ? (
+        <Text style={styles.helperErrorText}>{error}</Text>
+      ) : posts.length > 0 ? (
+        <ScrollView style={styles.helperList} nestedScrollEnabled>
+          {posts.map(post => (
+            <TouchableOpacity
+              key={post.id}
+              style={styles.linkCard}
+              onPress={() => onInsert(post)}
+            >
+              <Text style={styles.linkCardTitle}>{humanizeSlug(getPostSlugFromPath(post.path)) || post.name}</Text>
+              <Text style={styles.linkCardPath} numberOfLines={1}>{getPostUrlFromPath(post.path)}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      ) : (
+        <Text style={styles.helperEmptyText}>No repo posts matched that search.</Text>
+      )}
+    </View>
+  )
+}
+
+function DraftHistoryPanel({ history, onRestore, styles }) {
+  return (
+    <View style={styles.helperPanel}>
+      <View style={styles.helperPanelHeader}>
+        <Text style={styles.helperPanelTitle}>Draft History</Text>
+        <Text style={styles.helperPanelHint}>
+          Restore an earlier autosaved version before you push.
+        </Text>
+      </View>
+      {history.length > 0 ? (
+        <View style={styles.historyList}>
+          {history.map((snapshot, index) => (
+            <TouchableOpacity
+              key={snapshot.id}
+              style={styles.historyCard}
+              onPress={() => onRestore(snapshot)}
+            >
+              <View style={styles.historyHeader}>
+                <Text style={styles.historyTitle} numberOfLines={1}>
+                  {index === 0 ? 'Latest autosave' : snapshot.title}
+                </Text>
+                <Text style={styles.historyDate}>
+                  {new Date(snapshot.savedAt).toLocaleString()}
+                </Text>
+              </View>
+              <Text style={styles.historyFilename} numberOfLines={1}>
+                {snapshot.filename}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      ) : (
+        <Text style={styles.helperEmptyText}>Autosave snapshots will appear here after you make a few edits.</Text>
       )}
     </View>
   )
@@ -1524,6 +2147,183 @@ const createStyles = (colors) => StyleSheet.create({
     height: 20,
     backgroundColor: colors.border,
     marginHorizontal: 4,
+  },
+  panelBar: {
+    backgroundColor: colors.surfaceAlt,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    maxHeight: 44,
+  },
+  panelBarInner: {
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    gap: 8,
+  },
+  panelChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  panelChipActive: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+  },
+  panelChipText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  panelChipTextActive: {
+    color: colors.headerText,
+  },
+  helperPanel: {
+    backgroundColor: colors.surfaceAlt,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 10,
+  },
+  helperPanelHeader: {
+    gap: 2,
+  },
+  helperPanelTitle: {
+    color: colors.textStrong,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  helperPanelHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  helperEmptyText: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  helperErrorText: {
+    color: colors.danger,
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  helperSearchInput: {
+    backgroundColor: colors.inputBg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: colors.inputText,
+    fontSize: 14,
+  },
+  helperList: {
+    maxHeight: 220,
+  },
+  commandList: {
+    gap: 8,
+  },
+  commandCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 12,
+  },
+  commandTextWrap: {
+    flex: 1,
+  },
+  commandTitle: {
+    color: colors.textStrong,
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  commandHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  livePreviewBox: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+  },
+  outlineList: {
+    gap: 6,
+  },
+  outlineItem: {
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingRight: 12,
+  },
+  outlineText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  linkCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+  },
+  linkCardTitle: {
+    color: colors.textStrong,
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  linkCardPath: {
+    color: colors.link,
+    fontSize: 12,
+  },
+  historyList: {
+    gap: 8,
+  },
+  historyCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    padding: 12,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 4,
+  },
+  historyTitle: {
+    flex: 1,
+    color: colors.textStrong,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  historyDate: {
+    color: colors.textMuted,
+    fontSize: 11,
+  },
+  historyFilename: {
+    color: colors.textMuted,
+    fontSize: 12,
   },
   imageManager: {
     backgroundColor: colors.imagePanel,
