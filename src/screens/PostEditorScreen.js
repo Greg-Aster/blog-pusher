@@ -18,13 +18,9 @@ import * as ImagePicker from 'expo-image-picker'
 import { createPostDraft, serializeDraft } from '../utils/frontmatter'
 import { saveDraft, addToQueue, updateQueueItem } from '../utils/storage'
 import { useAppTheme } from '../utils/theme'
+import { getSiteTheme, SITE_THEMES } from '../utils/siteThemes'
 
-const SITES = [
-  { id: 'temporal', label: 'Temporal Flow', color: '#4a90d9' },
-  { id: 'dndiy', label: 'DNDIY', color: '#9b59b6' },
-  { id: 'travel', label: 'Trail Log', color: '#2d6a4f' },
-  { id: 'megameal', label: 'MEGAMEAL', color: '#c0392b' },
-]
+const SITES = SITE_THEMES
 
 const TABS = [
   { id: 'meta', label: 'Metadata', icon: 'list-outline' },
@@ -834,7 +830,14 @@ export default function PostEditorScreen({ navigation, route }) {
 
       {activeTab === 'preview' && (
         <ScrollView style={styles.tabContent} contentContainerStyle={styles.previewContainer}>
-          <MarkdownPreview body={draft.body} title={draft.title} markdownStyles={markdownStyles} styles={styles} />
+          <MarkdownPreview
+            body={draft.body}
+            title={draft.title}
+            markdownStyles={markdownStyles}
+            styles={styles}
+            site={activeSite}
+            colors={colors}
+          />
         </ScrollView>
       )}
 
@@ -1185,7 +1188,7 @@ const getMarkdownStyles = (colors) => ({
   image: { borderRadius: 8 },
 })
 
-function MarkdownPreview({ body, title, markdownStyles, styles }) {
+function MarkdownPreview({ body, title, markdownStyles, styles, site, colors }) {
   if (!body && !title) {
     return <Text style={styles.previewEmpty}>Nothing to preview yet.</Text>
   }
@@ -1194,9 +1197,22 @@ function MarkdownPreview({ body, title, markdownStyles, styles }) {
   const content = title ? `# ${title}\n\n${body || ''}` : (body || '')
 
   return (
-    <Markdown style={markdownStyles}>
-      {content || 'Nothing to preview yet.'}
-    </Markdown>
+    <View style={styles.sitePreviewShell}>
+      {site ? (
+        <View style={[styles.sitePreviewHeader, { borderColor: site.color }]}>
+          <Text style={[styles.sitePreviewEyebrow, { color: site.color }]}>
+            {site.label}
+          </Text>
+          <Text style={styles.sitePreviewTitle}>{site.title}</Text>
+          <Text style={styles.sitePreviewSubtitle}>{site.subtitle}</Text>
+        </View>
+      ) : null}
+      <View style={styles.sitePreviewBody}>
+        <Markdown style={markdownStyles}>
+          {content || 'Nothing to preview yet.'}
+        </Markdown>
+      </View>
+    </View>
   )
 }
 
@@ -1669,6 +1685,44 @@ const createStyles = (colors) => StyleSheet.create({
   // Preview
   previewContainer: { padding: 16, paddingBottom: 40 },
   previewEmpty: { fontSize: 15, color: colors.textSoft, textAlign: 'center', marginTop: 40 },
+  sitePreviewShell: {
+    borderRadius: 18,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  sitePreviewHeader: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 16,
+    backgroundColor: colors.hero,
+    borderBottomWidth: 3,
+  },
+  sitePreviewEyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1.1,
+    marginBottom: 8,
+  },
+  sitePreviewTitle: {
+    color: colors.textStrong,
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
+  sitePreviewSubtitle: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  sitePreviewBody: {
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 24,
+    backgroundColor: colors.surface,
+  },
 
   // Diff
   diffLabel: { fontSize: 14, color: colors.textMuted, fontWeight: '600', marginBottom: 8 },

@@ -15,20 +15,7 @@ import { loadSettings, removeFromQueue, updateQueueItem } from '../utils/storage
 import { publishFile, publishImage, getImageUploadDirectory } from '../utils/gitlab'
 import { normalizeYamlDateScalars } from '../utils/frontmatter'
 import { useAppTheme } from '../utils/theme'
-
-const SITE_LABELS = {
-  temporal: 'Temporal Flow',
-  dndiy: 'DNDIY',
-  travel: 'Trail Log',
-  megameal: 'MEGAMEAL',
-}
-
-const SITE_COLORS = {
-  temporal: '#4a90d9',
-  dndiy: '#9b59b6',
-  travel: '#2d6a4f',
-  megameal: '#c0392b',
-}
+import { getSiteTheme } from '../utils/siteThemes'
 
 const PROVIDERS = [
   { id: 'gitlab', label: 'GitLab', color: '#fc6d26' },
@@ -194,8 +181,9 @@ export default function PushScreen({ navigation, route }) {
     }
   }
 
-  const color = SITE_COLORS[item.siteId] || '#2d6a4f'
-  const label = SITE_LABELS[item.siteId] || item.siteId
+  const site = getSiteTheme(item.siteId)
+  const color = site.color
+  const label = site.label
   const provider = PROVIDERS.find(p => p.id === destination) || PROVIDERS[0]
   const defaultBranch = getDefaultBranch(destination)
   const effectiveBranch = branchOverride.trim() || defaultBranch
@@ -227,6 +215,8 @@ export default function PushScreen({ navigation, route }) {
             <Text style={styles.providerBadgeText}>{provider.label}</Text>
           </View>
           <Text style={styles.filename}>{item.filename}</Text>
+          <Text style={styles.siteTitle}>{site.title}</Text>
+          <Text style={styles.siteSubtitle}>{site.subtitle}</Text>
           {item.images?.length > 0 && (
             <Text style={styles.meta}>
               + {item.images.length} image{item.images.length !== 1 ? 's' : ''}
@@ -366,6 +356,8 @@ const createStyles = (colors) => StyleSheet.create({
   },
   providerBadgeText: { color: '#fff', fontSize: 11, fontWeight: '600' },
   filename: { fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 4 },
+  siteTitle: { fontSize: 13, fontWeight: '700', color: colors.textStrong, marginBottom: 2 },
+  siteSubtitle: { fontSize: 12, color: colors.textMuted, marginBottom: 8, lineHeight: 17 },
   meta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   sectionLabel: { fontSize: 12, fontWeight: '700', color: colors.textMuted, marginBottom: 10, textTransform: 'uppercase' },
   destinationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },

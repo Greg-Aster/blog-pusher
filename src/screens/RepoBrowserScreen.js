@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { findMatchingDraft, loadDrafts, loadSettings } from '../utils/storage'
 import { listRepoPosts, fetchRepoPost } from '../utils/gitlab'
 import { useAppTheme } from '../utils/theme'
+import { getSiteTheme } from '../utils/siteThemes'
 
 const PROVIDERS = [
   { id: 'gitlab', label: 'GitLab', color: '#fc6d26' },
@@ -63,6 +64,7 @@ export default function RepoBrowserScreen({ navigation }) {
   )
 
   const currentSite = settings?.sites?.find(site => site.id === siteId) || settings?.sites?.[0]
+  const currentSiteTheme = getSiteTheme(currentSite?.id || siteId)
 
   const filteredPosts = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -161,11 +163,14 @@ export default function RepoBrowserScreen({ navigation }) {
         disabled={busy}
       >
         <View style={styles.postHeader}>
-          <Text style={styles.postName} numberOfLines={1}>{item.name}</Text>
+          <View style={styles.postTitleWrap}>
+            <View style={[styles.siteDot, { backgroundColor: currentSiteTheme.color }]} />
+            <Text style={styles.postName} numberOfLines={1}>{item.name}</Text>
+          </View>
           {busy ? (
-            <ActivityIndicator size="small" color={colors.accent} />
+            <ActivityIndicator size="small" color={currentSiteTheme.color} />
           ) : (
-            <Ionicons name="open-outline" size={18} color={colors.accent} />
+            <Ionicons name="open-outline" size={18} color={currentSiteTheme.color} />
           )}
         </View>
         <Text style={styles.postPath} numberOfLines={2}>{item.path}</Text>
@@ -192,10 +197,12 @@ export default function RepoBrowserScreen({ navigation }) {
       </View>
 
       <View style={styles.hero}>
-        <Text style={styles.heroEyebrow}>Remote Editing</Text>
-        <Text style={styles.heroTitle}>Open a post from your repo and edit it on-device.</Text>
+        <Text style={[styles.heroEyebrow, { color: currentSiteTheme.color }]}>
+          {currentSiteTheme.label}
+        </Text>
+        <Text style={styles.heroTitle}>{currentSiteTheme.title}</Text>
         <Text style={styles.heroBody}>
-          Pick a provider and site path, load the repo files, then open one directly in the editor.
+          {currentSiteTheme.subtitle}. Load the repo files, then open one directly in the editor.
         </Text>
       </View>
 
@@ -233,22 +240,37 @@ export default function RepoBrowserScreen({ navigation }) {
 
             <Text style={styles.sectionLabel}>Site</Text>
             <View style={styles.siteGrid}>
-              {(settings?.sites || []).map(site => (
-                <TouchableOpacity
-                  key={site.id}
-                  style={[styles.siteCard, siteId === site.id && styles.siteCardActive]}
-                  onPress={() => setSiteId(site.id)}
-                >
-                  <Text style={[styles.siteCardTitle, siteId === site.id && styles.siteCardTitleActive]}>
-                    {site.name}
-                  </Text>
-                  <Text style={styles.siteCardPath} numberOfLines={2}>{site.path}</Text>
-                </TouchableOpacity>
-              ))}
+              {(settings?.sites || []).map(site => {
+                const siteTheme = getSiteTheme(site.id)
+                return (
+                  <TouchableOpacity
+                    key={site.id}
+                    style={[
+                      styles.siteCard,
+                      siteId === site.id && styles.siteCardActive,
+                      siteId === site.id && { borderColor: siteTheme.color, backgroundColor: `${siteTheme.color}18` },
+                    ]}
+                    onPress={() => setSiteId(site.id)}
+                  >
+                    <Text style={[styles.siteCardEyebrow, { color: siteTheme.color }]}>
+                      {siteTheme.label}
+                    </Text>
+                    <Text style={[styles.siteCardTitle, siteId === site.id && styles.siteCardTitleActive]}>
+                      {siteTheme.title}
+                    </Text>
+                    <Text style={styles.siteCardSubtitle} numberOfLines={2}>{siteTheme.subtitle}</Text>
+                    <Text style={styles.siteCardPath} numberOfLines={2}>{site.path}</Text>
+                  </TouchableOpacity>
+                )
+              })}
             </View>
 
             <TouchableOpacity
-              style={[styles.loadBtn, (!settings || loading) && styles.loadBtnDisabled]}
+              style={[
+                styles.loadBtn,
+                { backgroundColor: currentSiteTheme.color },
+                (!settings || loading) && styles.loadBtnDisabled,
+              ]}
               onPress={handleLoadPosts}
               disabled={!settings || loading}
               activeOpacity={0.85}
@@ -274,7 +296,7 @@ export default function RepoBrowserScreen({ navigation }) {
             {error ? <Text style={styles.errorText}>{error}</Text> : null}
             {filteredPosts.length > 0 ? (
               <Text style={styles.resultsLabel}>
-                {filteredPosts.length} post{filteredPosts.length !== 1 ? 's' : ''} available
+                {filteredPosts.length} {currentSiteTheme.label} post{filteredPosts.length !== 1 ? 's' : ''} available
               </Text>
             ) : null}
           </View>
@@ -406,6 +428,21 @@ const createStyles = (colors) => StyleSheet.create({
     gap: 12,
     marginBottom: 6,
   },
+  postTitleWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  siteDot: { width: 10, height: 10, borderRadius: 999 },
   postName: { flex: 1, color: colors.text, fontSize: 16, fontWeight: '700' },
+  siteCardEyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
   postPath: { color: colors.textMuted, fontSize: 12, lineHeight: 18 },
+  siteCardSubtitle: { color: colors.textMuted, fontSize: 12, lineHeight: 17, marginBottom: 8 },
 })

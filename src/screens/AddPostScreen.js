@@ -12,15 +12,10 @@ import * as DocumentPicker from 'expo-document-picker'
 import * as ImagePicker from 'expo-image-picker'
 import * as FileSystem from 'expo-file-system/legacy'
 import { Ionicons } from '@expo/vector-icons'
-import { addToQueue } from '../utils/storage'
 import { useAppTheme } from '../utils/theme'
+import { SITE_THEMES } from '../utils/siteThemes'
 
-const SITES = [
-  { id: 'temporal', label: 'Temporal Flow', color: '#4a90d9' },
-  { id: 'dndiy', label: 'DNDIY', color: '#9b59b6' },
-  { id: 'travel', label: 'Trail Log', color: '#2d6a4f' },
-  { id: 'megameal', label: 'MEGAMEAL', color: '#c0392b' },
-]
+const SITES = SITE_THEMES
 
 function looksLikeMarkdown(name = '') {
   const lowerName = String(name).toLowerCase()
@@ -264,6 +259,13 @@ export default function AddPostScreen({ navigation, route }) {
               </TouchableOpacity>
             ))}
           </View>
+          <View style={[styles.sitePreview, { borderColor: activeSite?.color || colors.border }]}>
+            <Text style={[styles.sitePreviewEyebrow, { color: activeSite?.color || colors.accent }]}>
+              {activeSite?.label}
+            </Text>
+            <Text style={styles.sitePreviewTitle}>{activeSite?.title}</Text>
+            <Text style={styles.sitePreviewSubtitle}>{activeSite?.subtitle}</Text>
+          </View>
         </View>
 
         {/* Add to queue */}
@@ -346,6 +348,22 @@ const createStyles = (colors) => StyleSheet.create({
     backgroundColor: colors.surface,
   },
   siteChipText: { fontSize: 13, fontWeight: '500', color: colors.textMuted },
+  sitePreview: {
+    marginTop: 14,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    backgroundColor: colors.surfaceMuted,
+  },
+  sitePreviewEyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 6,
+  },
+  sitePreviewTitle: { fontSize: 16, fontWeight: '700', color: colors.textStrong, marginBottom: 4 },
+  sitePreviewSubtitle: { fontSize: 13, color: colors.textMuted, lineHeight: 18 },
   queueBtn: {
     flexDirection: 'row',
     alignItems: 'center',

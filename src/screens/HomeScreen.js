@@ -13,20 +13,7 @@ import { useFocusEffect } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
 import { deleteDraft, getDraftIdentity, loadDrafts, loadQueue, removeFromQueue } from '../utils/storage'
 import { alpha, useAppTheme } from '../utils/theme'
-
-const SITE_LABELS = {
-  temporal: 'Temporal Flow',
-  dndiy: 'DNDIY',
-  travel: 'Trail Log',
-  megameal: 'MEGAMEAL',
-}
-
-const SITE_COLORS = {
-  temporal: '#4a90d9',
-  dndiy: '#9b59b6',
-  travel: '#2d6a4f',
-  megameal: '#c0392b',
-}
+import { getSiteTheme } from '../utils/siteThemes'
 
 const PROVIDER_LABELS = {
   gitlab: 'GitLab',
@@ -95,8 +82,9 @@ export default function HomeScreen({ navigation }) {
   }
 
   function renderItem({ item }) {
-    const color = SITE_COLORS[item.siteId] || '#888'
-    const label = SITE_LABELS[item.siteId] || item.siteId
+    const site = getSiteTheme(item.siteId)
+    const color = site.color
+    const label = site.label
     const imageCount = item.images?.length || 0
     const providerLabel = PROVIDER_LABELS[item.remoteProvider || item.destination] || 'Choose on push'
     return (
@@ -134,6 +122,12 @@ export default function HomeScreen({ navigation }) {
         </View>
         <Text style={styles.cardTitle} numberOfLines={1}>
           {item.filename}
+        </Text>
+        <Text style={styles.cardSiteTitle} numberOfLines={1}>
+          {site.title}
+        </Text>
+        <Text style={styles.cardSiteSubtitle} numberOfLines={1}>
+          {site.subtitle}
         </Text>
         <Text style={styles.cardDate}>Added {formatDate(item.addedAt)}</Text>
         <Text style={styles.cardMeta}>{providerLabel}</Text>
@@ -219,8 +213,9 @@ export default function HomeScreen({ navigation }) {
               contentContainerStyle={styles.draftsRow}
             >
               {visibleDrafts.map(draft => {
-                const color = SITE_COLORS[draft.repoSiteId] || '#888'
-                const label = SITE_LABELS[draft.repoSiteId] || draft.repoSiteId || 'Draft'
+                const site = getSiteTheme(draft.repoSiteId)
+                const color = site.color
+                const label = site.label || draft.repoSiteId || 'Draft'
                 const title = draft.title || draft.filename || 'Untitled draft'
                 const draftType = getDraftIdentity(draft)
                   ? 'Repo draft saved on device'
@@ -250,6 +245,9 @@ export default function HomeScreen({ navigation }) {
                     </Text>
                     <Text style={styles.draftFilename} numberOfLines={1}>
                       {draft.filename || 'new-post.md'}
+                    </Text>
+                    <Text style={styles.draftSiteTitle} numberOfLines={1}>
+                      {site.title}
                     </Text>
                     <Text style={styles.draftMeta}>{draftType}</Text>
                     <Text style={styles.draftMeta}>
@@ -398,6 +396,12 @@ const createStyles = (colors) => StyleSheet.create({
   draftFilename: {
     color: colors.textMuted,
     fontSize: 12,
+    marginBottom: 4,
+  },
+  draftSiteTitle: {
+    color: colors.textStrong,
+    fontSize: 12,
+    fontWeight: '600',
     marginBottom: 8,
   },
   draftMeta: {
@@ -466,6 +470,8 @@ const createStyles = (colors) => StyleSheet.create({
   },
   imageBadgeText: { fontSize: 11, color: colors.textMuted, fontWeight: '600' },
   cardTitle: { fontSize: 15, fontWeight: '600', color: colors.text, marginBottom: 4 },
+  cardSiteTitle: { fontSize: 12, fontWeight: '700', color: colors.textStrong, marginBottom: 2 },
+  cardSiteSubtitle: { fontSize: 11, color: colors.textMuted, marginBottom: 6 },
   cardDate: { fontSize: 11, color: colors.textSoft, marginBottom: 6 },
   cardMeta: {
     alignSelf: 'flex-start',
