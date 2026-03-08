@@ -36,6 +36,17 @@ function validateProviderSettings(provider, settings) {
   return null
 }
 
+function normalizeRepoPath(path) {
+  return String(path || '').trim().replace(/^\/+|\/+$/g, '')
+}
+
+function remotePathMatchesSite(remotePath, sitePath) {
+  const normalizedRemote = normalizeRepoPath(remotePath)
+  const normalizedSite = normalizeRepoPath(sitePath)
+  if (!normalizedRemote || !normalizedSite) return true
+  return normalizedRemote === normalizedSite || normalizedRemote.startsWith(`${normalizedSite}/`)
+}
+
 export default function PushScreen({ navigation, route }) {
   const theme = useAppTheme()
   const colors = theme.colors
@@ -94,6 +105,16 @@ export default function PushScreen({ navigation, route }) {
     const siteConfig = settingsForPush.sites?.find(s => s.id === item.siteId)
     if (!siteConfig) {
       Alert.alert('Site not found', 'Check your site paths in Settings.')
+      setPushing(false)
+      return
+    }
+
+    if (item.remotePath && !remotePathMatchesSite(item.remotePath, siteConfig.path)) {
+      Alert.alert(
+        'Site mismatch',
+        `This queued post is linked to:\n${item.remotePath}\n\nBut the selected site points to:\n${siteConfig.path}\n\nOpen the post again from the correct site instead of pushing this queue item.`
+      )
+      addLog(`✗ Site mismatch: ${item.remotePath} is outside ${siteConfig.path}`, false)
       setPushing(false)
       return
     }
@@ -217,6 +238,12 @@ export default function PushScreen({ navigation, route }) {
           <Text style={styles.filename}>{item.filename}</Text>
           <Text style={styles.siteTitle}>{site.title}</Text>
           <Text style={styles.siteSubtitle}>{site.subtitle}</Text>
+          {item.remotePath ? (
+            <View style={styles.remotePathWrap}>
+              <Text style={styles.remotePathLabel}>Linked remote file</Text>
+              <Text style={styles.remotePathValue}>{item.remotePath}</Text>
+            </View>
+          ) : null}
           {item.images?.length > 0 && (
             <Text style={styles.meta}>
               + {item.images.length} image{item.images.length !== 1 ? 's' : ''}
@@ -358,6 +385,25 @@ const createStyles = (colors) => StyleSheet.create({
   filename: { fontSize: 17, fontWeight: '700', color: colors.text, marginBottom: 4 },
   siteTitle: { fontSize: 13, fontWeight: '700', color: colors.textStrong, marginBottom: 2 },
   siteSubtitle: { fontSize: 12, color: colors.textMuted, marginBottom: 8, lineHeight: 17 },
+  remotePathWrap: {
+    marginBottom: 6,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  remotePathLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textMuted,
+    marginBottom: 3,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  remotePathValue: {
+    fontSize: 12,
+    color: colors.text,
+    lineHeight: 17,
+  },
   meta: { fontSize: 13, color: colors.textMuted, marginTop: 2 },
   sectionLabel: { fontSize: 12, fontWeight: '700', color: colors.textMuted, marginBottom: 10, textTransform: 'uppercase' },
   destinationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },

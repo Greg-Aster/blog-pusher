@@ -1310,6 +1310,8 @@ export default function PostEditorScreen({ navigation, route }) {
 // Metadata Form
 // ---------------------------------------------------------------------------
 function MetadataForm({ draft, updateField, onTitleChange, onSiteChange, colors, styles }) {
+  const siteLocked = !!draft.remotePath
+
   return (
     <>
       {draft.remotePath ? (
@@ -1326,15 +1328,24 @@ function MetadataForm({ draft, updateField, onTitleChange, onSiteChange, colors,
 
       {/* Site selector */}
       <Text style={styles.label}>Target Site</Text>
+      {siteLocked ? (
+        <Text style={styles.helpText}>
+          Target site is locked because this draft is linked to an existing remote file.
+        </Text>
+      ) : null}
       <View style={styles.siteRow}>
         {SITES.map(site => (
           <TouchableOpacity
             key={site.id}
             style={[
               styles.siteChip,
+              siteLocked && styles.siteChipDisabled,
               draft.repoSiteId === site.id && { backgroundColor: site.color, borderColor: site.color },
             ]}
-            onPress={() => onSiteChange(site.id)}
+            onPress={() => {
+              if (!siteLocked) onSiteChange(site.id)
+            }}
+            disabled={siteLocked}
           >
             <Text style={[styles.siteChipText, draft.repoSiteId === site.id && { color: '#fff' }]}>
               {site.label}
@@ -2089,6 +2100,9 @@ const createStyles = (colors) => StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.borderStrong,
     backgroundColor: colors.surface,
+  },
+  siteChipDisabled: {
+    opacity: 0.65,
   },
   siteChipText: { fontSize: 13, fontWeight: '500', color: colors.textMuted },
   input: {
