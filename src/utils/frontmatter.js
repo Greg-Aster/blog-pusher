@@ -2,8 +2,10 @@
  * Frontmatter parser and serializer.
  *
  * Handles YAML frontmatter delimited by --- fences at the top of Markdown
- * files.  Designed to preserve unknown keys and avoid reordering.
+ * files. Designed to preserve unknown keys and avoid reordering.
  */
+
+import { parse as parseYaml } from 'yaml'
 
 const FRONTMATTER_RE = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/
 const YAML_DATE_KEYS = new Set(['published', 'updated', 'date', 'pubDatetime', 'modDatetime'])
@@ -147,71 +149,17 @@ export function normalizeYamlDateScalars(raw) {
 // ---------------------------------------------------------------------------
 
 /**
- * Parse a simple YAML block into a plain object.
- * Supports: string values, booleans, numbers, and inline/block arrays.
- * Does NOT support nested objects — they are stored as raw strings.
+ * Parse a YAML block into a plain object.
+ * Supports nested objects, arrays, booleans, numbers, and strings.
  */
 function parseSimpleYaml(yaml) {
-  const result = {}
-  if (!yaml) return result
-
-  const lines = yaml.split(/\r?\n/)
-  let currentKey = null
-  let currentArray = null
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-
-    // Block array continuation: "  - value"
-    if (currentKey && currentArray !== null && /^\s+-\s+/.test(line)) {
-      const val = line.replace(/^\s+-\s+/, '').trim()
-      currentArray.push(unquote(val))
-      result[currentKey] = currentArray
-      continue
-    }
-
-    // If we were collecting a block array, finalize it
-    if (currentArray !== null) {
-      currentArray = null
-      currentKey = null
-    }
-
-    // Key: value line
-    const kvMatch = line.match(/^([A-Za-z_][\w.-]*)\s*:\s*(.*)$/)
-    if (!kvMatch) continue
-
-    const key = kvMatch[1]
-    let value = kvMatch[2].trim()
-
-    // Inline array: [a, b, c]
-    if (value.startsWith('[') && value.endsWith(']')) {
-      const inner = value.slice(1, -1)
-      result[key] = inner
-        ? inner.split(',').map(s => unquote(s.trim()))
-        : []
-      currentKey = null
-      currentArray = null
-      continue
-    }
-
-    // Empty value followed by block array
-    if (value === '') {
-      // Peek at next line for block array
-      if (i + 1 < lines.length && /^\s+-\s+/.test(lines[i + 1])) {
-        currentKey = key
-        currentArray = []
-        continue
-      }
-      result[key] = ''
-      continue
-    }
-
-    result[key] = coerceValue(unquote(value))
-    currentKey = null
-    currentArray = null
+  if (!yaml) return {}
+  try {
+    const parsed = parseYaml(yaml, { schema: 'core' })
+    return isPlainObject(parsed) ? parsed : {}
+  } catch {
+    return {}
   }
-
-  return result
 }
 
 function serializeSimpleYaml(obj, keyOrder) {
@@ -220,60 +168,148 @@ function serializeSimpleYaml(obj, keyOrder) {
   const lines = []
   const written = new Set()
 
-  function writePair(key) {
+  function writePair(key, value, indent = 0) {
     if (written.has(key)) return
-    if (!(key in obj)) return
+    if (value === undefined) return
     written.add(key)
-    const val = obj[key]
-    if (Array.isArray(val)) {
-      if (val.length === 0) {
-        lines.push(`${key}: []`)
+    const pad = ' '.repeat(indent)
+
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        lines.push(`${pad}${key}: []`)
       } else {
-        lines.push(`${key}:`)
-        for (const item of val) {
-          lines.push(`  - ${yamlQuote(String(item), key)}`)
+        lines.push(`${pad}${key}:`)
+        for (const item of value) {
+          writeArrayItem(item, indent + 2, key)
         }
       }
-    } else if (val === true) {
-      lines.push(`${key}: true`)
-    } else if (val === false) {
-      lines.push(`${key}: false`)
-    } else if (val === null || val === undefined) {
-      // skip
-    } else {
-      lines.push(`${key}: ${yamlQuote(String(val), key)}`)
+      return
     }
+
+    if (isPlainObject(value)) {
+      const entries = Object.entries(value)
+      if (entries.length === 0) {
+        lines.push(`${pad}${key}: {}`)
+      } else {
+        lines.push(`${pad}${key}:`)
+        for (const [childKey, childValue] of entries) {
+          writeNestedPair(childKey, childValue, indent + 2)
+        }
+      }
+      return
+    }
+
+    if (value === null) {
+      return
+    }
+
+    lines.push(`${pad}${key}: ${formatYamlScalar(value, key)}`)
+  }
+
+  function writeNestedPair(key, value, indent) {
+    const pad = ' '.repeat(indent)
+
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        lines.push(`${pad}${key}: []`)
+      } else {
+        lines.push(`${pad}${key}:`)
+        for (const item of value) {
+          writeArrayItem(item, indent + 2, key)
+        }
+      }
+      return
+    }
+
+    if (isPlainObject(value)) {
+      const entries = Object.entries(value)
+      if (entries.length === 0) {
+        lines.push(`${pad}${key}: {}`)
+      } else {
+        lines.push(`${pad}${key}:`)
+        for (const [childKey, childValue] of entries) {
+          writeNestedPair(childKey, childValue, indent + 2)
+        }
+      }
+      return
+    }
+
+    if (value === null || value === undefined) {
+      return
+    }
+
+    lines.push(`${pad}${key}: ${formatYamlScalar(value, key)}`)
+  }
+
+  function writeArrayItem(item, indent, parentKey) {
+    const pad = ' '.repeat(indent)
+
+    if (Array.isArray(item)) {
+      if (item.length === 0) {
+        lines.push(`${pad}- []`)
+      } else {
+        lines.push(`${pad}-`)
+        for (const nestedItem of item) {
+          writeArrayItem(nestedItem, indent + 2, parentKey)
+        }
+      }
+      return
+    }
+
+    if (isPlainObject(item)) {
+      const entries = Object.entries(item)
+      if (entries.length === 0) {
+        lines.push(`${pad}- {}`)
+      } else {
+        lines.push(`${pad}-`)
+        for (const [childKey, childValue] of entries) {
+          writeNestedPair(childKey, childValue, indent + 2)
+        }
+      }
+      return
+    }
+
+    if (item === null || item === undefined) {
+      lines.push(`${pad}- null`)
+      return
+    }
+
+    lines.push(`${pad}- ${formatYamlScalar(item, parentKey)}`)
   }
 
   if (Array.isArray(keyOrder)) {
-    for (const key of keyOrder) writePair(key)
+    for (const key of keyOrder) {
+      if (key in obj) writePair(key, obj[key], 0)
+    }
   }
-  for (const key of Object.keys(obj)) writePair(key)
+  for (const key of Object.keys(obj)) {
+    if (written.has(key)) continue
+    writePair(key, obj[key], 0)
+  }
 
   return lines.join('\n')
 }
 
-function unquote(s) {
-  if ((s.startsWith('"') && s.endsWith('"')) ||
-      (s.startsWith("'") && s.endsWith("'"))) {
-    return s.slice(1, -1)
-  }
-  return s
-}
-
-function coerceValue(s) {
-  if (s === 'true') return true
-  if (s === 'false') return false
-  if (s === 'null' || s === '~') return null
-  // Don't coerce date-like strings to numbers
-  if (/^\d{4}-\d{2}/.test(s)) return s
-  if (/^-?\d+(\.\d+)?$/.test(s) && s.length < 16) return Number(s)
-  return s
+function isPlainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)
 }
 
 function isYamlDateLiteral(s) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ||
     /^\d{4}-\d{2}-\d{2}[Tt ][\d:.+-]+(?:[Zz])?$/.test(s)
+}
+
+function formatYamlScalar(value, key) {
+  if (value === true) return 'true'
+  if (value === false) return 'false'
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  if (value instanceof Date) {
+    const iso = value.toISOString()
+    const dateOnly = iso.endsWith('T00:00:00.000Z') ? iso.slice(0, 10) : iso
+    return yamlQuote(dateOnly, key)
+  }
+  if (value === null) return 'null'
+  return yamlQuote(String(value), key)
 }
 
 function yamlQuote(s, key) {
@@ -283,9 +319,9 @@ function yamlQuote(s, key) {
   // Quote strings that could be misinterpreted
   if (s === '' || s === 'true' || s === 'false' || s === 'null' ||
       /^[\d.-]/.test(s) || /[:#{}[\],&*?|>!%@`]/.test(s) ||
-      s.includes("'") || s.includes('"')) {
+      s.includes("'") || s.includes('"') || s.includes('\n')) {
     // Use double quotes, escape internal double quotes
-    return `"${s.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+    return `"${s.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/"/g, '\\"')}"`
   }
   return s
 }

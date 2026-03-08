@@ -126,7 +126,7 @@ export default function PushScreen({ navigation, route }) {
       return
     }
 
-    const useRemoteIdentity = item.remoteProvider === destination && !!item.remotePath
+    const useRemoteIdentity = !!item.remotePath && (!item.remoteProvider || item.remoteProvider === destination)
     const normalizedContent = normalizeYamlDateScalars(item.content)
     if (normalizedContent !== item.content) {
       addLog('Normalized quoted YAML date fields before upload.')
