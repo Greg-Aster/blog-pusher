@@ -54,6 +54,7 @@ const MD_ACTIONS = [
 const EDITOR_PANELS = [
   { id: 'live', label: 'Live', icon: 'sparkles-outline' },
   { id: 'commands', label: 'Insert', icon: 'flash-outline' },
+  { id: 'images', label: 'Photos', icon: 'images-outline' },
   { id: 'outline', label: 'Outline', icon: 'list-outline' },
   { id: 'links', label: 'Links', icon: 'link-outline' },
   { id: 'history', label: 'History', icon: 'time-outline' },
@@ -457,7 +458,7 @@ export default function PostEditorScreen({ navigation, route }) {
   })
 
   const [activeTab, setActiveTab] = useState('meta')
-  const [editorPanel, setEditorPanel] = useState('live')
+  const [editorPanel, setEditorPanel] = useState(null)
   const [editorSelection, setEditorSelection] = useState({ start: 0, end: 0 })
   const [repoLinks, setRepoLinks] = useState([])
   const [linkQuery, setLinkQuery] = useState('')
@@ -1163,97 +1164,109 @@ export default function PostEditorScreen({ navigation, route }) {
             })}
           </ScrollView>
 
-          {(slashTrigger || editorPanel === 'commands') ? (
-            <InsertCommandPanel
-              commands={filteredInsertCommands}
-              slashTrigger={slashTrigger}
-              onInsert={handleInsertCommand}
-              colors={colors}
-              styles={styles}
+          <View style={styles.editorSurface}>
+            <MarkdownTextInput
+              ref={bodyRef}
+              style={styles.bodyInput}
+              value={draft.body || ''}
+              onChangeText={handleBodyChange}
+              parser={parseLiveMarkdown}
+              markdownStyle={liveMarkdownStyle}
+              onSelectionChange={e => {
+                bodySelection.current = e.nativeEvent.selection
+                setEditorSelection(e.nativeEvent.selection)
+              }}
+              placeholder="Write your post in Markdown..."
+              placeholderTextColor={colors.placeholder}
+              multiline
+              textAlignVertical="top"
+              autoCapitalize="sentences"
+              autoCorrect={false}
+              keyboardAppearance={theme.dark ? 'dark' : 'light'}
+              selectionColor={activeSite?.color || colors.accent}
+              scrollEnabled
             />
-          ) : null}
-
-          {editorPanel === 'live' ? (
-            <LivePreviewPanel
-              title={draft.title}
-              body={livePreviewBody}
-              markdownStyles={markdownStyles}
-              colors={colors}
-              styles={styles}
-            />
-          ) : null}
-
-          {editorPanel === 'outline' ? (
-            <OutlinePanel
-              headings={outline}
-              onSelect={focusCursor}
-              colors={colors}
-              styles={styles}
-            />
-          ) : null}
-
-          {editorPanel === 'links' ? (
-            <InternalLinkPanel
-              posts={filteredRepoLinks}
-              loading={loadingLinks}
-              error={linkError}
-              query={linkQuery}
-              onQueryChange={setLinkQuery}
-              onInsert={insertInternalLink}
-              styles={styles}
-              colors={colors}
-            />
-          ) : null}
-
-          {editorPanel === 'history' ? (
-            <DraftHistoryPanel
-              history={draft.history || []}
-              onRestore={restoreHistorySnapshot}
-              styles={styles}
-              colors={colors}
-            />
-          ) : null}
-
-          <ImageManager
-            images={draft.attachedImages || []}
-            heroImage={draft.heroImage}
-            onAddImage={() => handlePickImage('plain')}
-            onInsertImage={insertAttachedImage}
-            onInsertStructuredImage={image => insertAttachedImage(image, { structured: true })}
-            onSetHeroImage={image => updateField('heroImage', image.publicPath)}
-            onUpdateImage={updateAttachedImage}
-            onMoveImage={moveAttachedImage}
-            onRemoveImage={removeAttachedImage}
-            colors={colors}
-            styles={styles}
-          />
-          <MarkdownTextInput
-            ref={bodyRef}
-            style={styles.bodyInput}
-            value={draft.body || ''}
-            onChangeText={handleBodyChange}
-            parser={parseLiveMarkdown}
-            markdownStyle={liveMarkdownStyle}
-            onSelectionChange={e => {
-              bodySelection.current = e.nativeEvent.selection
-              setEditorSelection(e.nativeEvent.selection)
-            }}
-            placeholder="Write your post in Markdown..."
-            placeholderTextColor={colors.placeholder}
-            multiline
-            textAlignVertical="top"
-            autoCapitalize="sentences"
-            autoCorrect={false}
-            keyboardAppearance={theme.dark ? 'dark' : 'light'}
-            selectionColor={activeSite?.color || colors.accent}
-            scrollEnabled
-          />
-          {/* Word count bar */}
-          <View style={styles.statsBar}>
-            <Text style={styles.statsText}>
-              {bodyStats.words} words  {bodyStats.chars} chars  {bodyStats.lines} lines
-            </Text>
+            <View style={styles.statsBar}>
+              <Text style={styles.statsText}>
+                {bodyStats.words} words  {bodyStats.chars} chars  {bodyStats.lines} lines
+              </Text>
+            </View>
           </View>
+
+          {(slashTrigger || editorPanel) ? (
+            <ScrollView
+              style={styles.editorAssistantArea}
+              contentContainerStyle={styles.editorAssistantContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              {(slashTrigger || editorPanel === 'commands') ? (
+                <InsertCommandPanel
+                  commands={filteredInsertCommands}
+                  slashTrigger={slashTrigger}
+                  onInsert={handleInsertCommand}
+                  colors={colors}
+                  styles={styles}
+                />
+              ) : null}
+
+              {editorPanel === 'live' ? (
+                <LivePreviewPanel
+                  title={draft.title}
+                  body={livePreviewBody}
+                  markdownStyles={markdownStyles}
+                  colors={colors}
+                  styles={styles}
+                />
+              ) : null}
+
+              {editorPanel === 'images' ? (
+                <ImageManager
+                  images={draft.attachedImages || []}
+                  heroImage={draft.heroImage}
+                  onAddImage={() => handlePickImage('plain')}
+                  onInsertImage={insertAttachedImage}
+                  onInsertStructuredImage={image => insertAttachedImage(image, { structured: true })}
+                  onSetHeroImage={image => updateField('heroImage', image.publicPath)}
+                  onUpdateImage={updateAttachedImage}
+                  onMoveImage={moveAttachedImage}
+                  onRemoveImage={removeAttachedImage}
+                  colors={colors}
+                  styles={styles}
+                />
+              ) : null}
+
+              {editorPanel === 'outline' ? (
+                <OutlinePanel
+                  headings={outline}
+                  onSelect={focusCursor}
+                  colors={colors}
+                  styles={styles}
+                />
+              ) : null}
+
+              {editorPanel === 'links' ? (
+                <InternalLinkPanel
+                  posts={filteredRepoLinks}
+                  loading={loadingLinks}
+                  error={linkError}
+                  query={linkQuery}
+                  onQueryChange={setLinkQuery}
+                  onInsert={insertInternalLink}
+                  styles={styles}
+                  colors={colors}
+                />
+              ) : null}
+
+              {editorPanel === 'history' ? (
+                <DraftHistoryPanel
+                  history={draft.history || []}
+                  onRestore={restoreHistorySnapshot}
+                  styles={styles}
+                  colors={colors}
+                />
+              ) : null}
+            </ScrollView>
+          ) : null}
         </View>
       )}
 
@@ -2464,6 +2477,20 @@ const createStyles = (colors) => StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: colors.textMuted,
+  },
+
+  editorSurface: {
+    flex: 1,
+    minHeight: 220,
+  },
+  editorAssistantArea: {
+    maxHeight: 260,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.backgroundAlt,
+  },
+  editorAssistantContent: {
+    paddingBottom: 8,
   },
 
   // Body editor
