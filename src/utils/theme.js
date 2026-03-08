@@ -1,9 +1,20 @@
-import { useMemo } from 'react'
+import React, { createContext, useContext, useMemo } from 'react'
 import { useColorScheme } from 'react-native'
 import {
   DefaultTheme as NavigationDefaultTheme,
   DarkTheme as NavigationDarkTheme,
 } from '@react-navigation/native'
+
+const ThemePreferenceContext = createContext({
+  preference: 'system',
+  setPreference: () => {},
+})
+
+export const THEME_PREFERENCES = [
+  { id: 'system', label: 'System', description: 'Follow your phone theme' },
+  { id: 'dark', label: 'Dark', description: 'Always use dark mode' },
+  { id: 'light', label: 'Light', description: 'Always use light mode' },
+]
 
 const palettes = {
   light: {
@@ -80,9 +91,34 @@ export function getTheme(mode = 'light') {
   }
 }
 
+export function resolveThemeMode(preference = 'system', scheme = 'light') {
+  if (preference === 'dark') return 'dark'
+  if (preference === 'light') return 'light'
+  return scheme === 'dark' ? 'dark' : 'light'
+}
+
+export function AppThemeProvider({ preference = 'system', setPreference, children }) {
+  const value = useMemo(() => ({
+    preference,
+    setPreference: typeof setPreference === 'function' ? setPreference : () => {},
+  }), [preference, setPreference])
+
+  return (
+    <ThemePreferenceContext.Provider value={value}>
+      {children}
+    </ThemePreferenceContext.Provider>
+  )
+}
+
+export function useThemePreference() {
+  return useContext(ThemePreferenceContext)
+}
+
 export function useAppTheme() {
   const scheme = useColorScheme()
-  return useMemo(() => getTheme(scheme === 'dark' ? 'dark' : 'light'), [scheme])
+  const { preference } = useThemePreference()
+  const mode = resolveThemeMode(preference, scheme)
+  return useMemo(() => getTheme(mode), [mode])
 }
 
 export function getNavigationTheme(theme) {

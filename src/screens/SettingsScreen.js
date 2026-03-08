@@ -12,9 +12,10 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { loadSettings, saveSettings } from '../utils/storage'
-import { useAppTheme } from '../utils/theme'
+import { THEME_PREFERENCES, useAppTheme, useThemePreference } from '../utils/theme'
 
 export default function SettingsScreen({ navigation }) {
+  const { preference, setPreference } = useThemePreference()
   const theme = useAppTheme()
   const colors = theme.colors
   const styles = useMemo(() => createStyles(colors), [colors])
@@ -48,6 +49,14 @@ export default function SettingsScreen({ navigation }) {
         },
       },
     }))
+  }
+
+  function updateAppearance(value) {
+    setSettings(prev => ({
+      ...prev,
+      appearance: value,
+    }))
+    setPreference(value)
   }
 
   function toggleToken(provider) {
@@ -160,6 +169,36 @@ export default function SettingsScreen({ navigation }) {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Appearance</Text>
+          <Text style={styles.hint}>
+            Choose whether Blog Pusher should follow your phone theme or stay in one mode.
+          </Text>
+          <View style={styles.appearanceRow}>
+            {THEME_PREFERENCES.map(option => {
+              const selected = (settings.appearance || preference || 'system') === option.id
+              return (
+                <TouchableOpacity
+                  key={option.id}
+                  style={[
+                    styles.appearanceChip,
+                    selected && styles.appearanceChipActive,
+                  ]}
+                  onPress={() => updateAppearance(option.id)}
+                >
+                  <Text style={[
+                    styles.appearanceChipText,
+                    selected && styles.appearanceChipTextActive,
+                  ]}>
+                    {option.label}
+                  </Text>
+                  <Text style={styles.appearanceChipHint}>{option.description}</Text>
+                </TouchableOpacity>
+              )
+            })}
+          </View>
+        </View>
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>GitLab Access</Text>
 
@@ -425,6 +464,36 @@ const createStyles = (colors) => StyleSheet.create({
   linkText: {
     fontSize: 13,
     color: colors.link,
+  },
+  appearanceRow: {
+    gap: 10,
+    marginTop: 8,
+  },
+  appearanceChip: {
+    backgroundColor: colors.inputBg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  appearanceChipActive: {
+    borderColor: colors.accent,
+    backgroundColor: colors.surfaceMuted,
+  },
+  appearanceChipText: {
+    color: colors.textStrong,
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  appearanceChipTextActive: {
+    color: colors.accent,
+  },
+  appearanceChipHint: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 17,
   },
   testBtn: {
     flexDirection: 'row',

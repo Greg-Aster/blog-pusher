@@ -7,6 +7,7 @@ const KEYS = {
 }
 
 const DEFAULT_SETTINGS = {
+  appearance: 'system',
   providers: {
     gitlab: {
       token: '',
@@ -64,6 +65,9 @@ function normalizeSites(savedSites) {
 }
 
 function normalizeSettings(saved = {}) {
+  const appearance = ['light', 'dark', 'system'].includes(saved.appearance)
+    ? saved.appearance
+    : DEFAULT_SETTINGS.appearance
   const providers = {
     gitlab: {
       ...DEFAULT_SETTINGS.providers.gitlab,
@@ -86,6 +90,7 @@ function normalizeSettings(saved = {}) {
   return {
     ...DEFAULT_SETTINGS,
     ...saved,
+    appearance,
     providers,
     // Keep legacy aliases so older screens keep working.
     token: providers.gitlab.token,

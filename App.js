@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { AppState } from 'react-native'
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
@@ -11,7 +11,8 @@ import RepoBrowserScreen from './src/screens/RepoBrowserScreen'
 import SettingsScreen from './src/screens/SettingsScreen'
 import FormatReferenceScreen from './src/screens/FormatReferenceScreen'
 import { consumeSharedFile } from './src/utils/shareIntent'
-import { getNavigationTheme, useAppTheme } from './src/utils/theme'
+import { loadSettings } from './src/utils/storage'
+import { AppThemeProvider, getNavigationTheme, useAppTheme } from './src/utils/theme'
 
 const Stack = createNativeStackNavigator()
 const navigationRef = createNavigationContainerRef()
@@ -23,7 +24,7 @@ function normalizeSharedFilename(sharedFile) {
   return 'shared-note.md'
 }
 
-export default function App() {
+function AppNavigation() {
   const theme = useAppTheme()
   const openSharedFile = useCallback(async () => {
     if (!navigationRef.isReady()) return
@@ -89,5 +90,21 @@ export default function App() {
         <Stack.Screen name="FormatReference" component={FormatReferenceScreen} />
       </Stack.Navigator>
     </NavigationContainer>
+  )
+}
+
+export default function App() {
+  const [themePreference, setThemePreference] = useState('system')
+
+  useEffect(() => {
+    loadSettings().then(settings => {
+      setThemePreference(settings?.appearance || 'system')
+    })
+  }, [])
+
+  return (
+    <AppThemeProvider preference={themePreference} setPreference={setThemePreference}>
+      <AppNavigation />
+    </AppThemeProvider>
   )
 }
