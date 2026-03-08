@@ -2,7 +2,7 @@
   "expo": {
     "name": "Blog Pusher",
     "slug": "blog-pusher",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -15,6 +15,7 @@
       "supportsTablet": false
     },
     "android": {
+      "versionCode": 2,
       "adaptiveIcon": {
         "backgroundColor": "#1a3a2a",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -28,6 +29,11 @@
     },
     "plugins": [
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "76f4d34d-1680-4d8b-9358-ca2981ef287b"
+      }
+    }
   }
 }

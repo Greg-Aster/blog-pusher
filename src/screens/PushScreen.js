@@ -12,7 +12,7 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { loadSettings, removeFromQueue, updateQueueItem } from '../utils/storage'
-import { publishFile, publishImage, getImageUploadDirectory } from '../utils/gitlab'
+import { publishFile, publishImage, getImageUploadDirectory, listRepoPosts } from '../utils/gitlab'
 import { normalizeYamlDateScalars } from '../utils/frontmatter'
 import { useAppTheme } from '../utils/theme'
 import { getSiteTheme } from '../utils/siteThemes'
@@ -45,6 +45,12 @@ function remotePathMatchesSite(remotePath, sitePath) {
   const normalizedSite = normalizeRepoPath(sitePath)
   if (!normalizedRemote || !normalizedSite) return true
   return normalizedRemote === normalizedSite || normalizedRemote.startsWith(`${normalizedSite}/`)
+}
+
+function getPathStem(path) {
+  const normalized = normalizeRepoPath(path)
+  const basename = normalized.split('/').pop() || normalized
+  return basename.replace(/\.[^.]+$/, '').toLowerCase()
 }
 
 export default function PushScreen({ navigation, route }) {
@@ -148,6 +154,23 @@ export default function PushScreen({ navigation, route }) {
     }
 
     const useRemoteIdentity = !!item.remotePath && (!item.remoteProvider || item.remoteProvider === destination)
+    if (!useRemoteIdentity) {
+      const existingPosts = await listRepoPosts(settingsForPush, siteConfig.path, destination)
+      if (existingPosts.ok) {
+        const targetStem = getPathStem(item.filename)
+        const conflictingPost = (existingPosts.posts || []).find(post => getPathStem(post.path) === targetStem)
+        if (conflictingPost) {
+          Alert.alert(
+            'Existing post found',
+            `A repo post with this slug already exists:\n${conflictingPost.path}\n\nOpen that post from Browse Repo and edit it there instead of pushing this queued item as a new file.`
+          )
+          addLog(`✗ Existing repo post detected: ${conflictingPost.path}`, false)
+          setPushing(false)
+          return
+        }
+      }
+    }
+
     const normalizedContent = normalizeYamlDateScalars(item.content)
     if (normalizedContent !== item.content) {
       addLog('Normalized quoted YAML date fields before upload.')
