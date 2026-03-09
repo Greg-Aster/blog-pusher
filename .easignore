@@ -3,7 +3,6 @@ node_modules
 dist
 dist-export
 web-build
-.git
 .linked-worktrees
 android/.gradle
 android/build
