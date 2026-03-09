@@ -154,75 +154,91 @@ export default function PushScreen({ navigation, route }) {
     }
 
     const useRemoteIdentity = !!item.remotePath && (!item.remoteProvider || item.remoteProvider === destination)
+
+    async function doPush(publishOptions) {
+      const normalizedContent = normalizeYamlDateScalars(item.content)
+      if (normalizedContent !== item.content) {
+        addLog('Normalized quoted YAML date fields before upload.')
+        await updateQueueItem(item.id, { content: normalizedContent })
+      }
+
+      const result = await publishFile(
+        item.filename,
+        normalizedContent,
+        settingsForPush,
+        siteConfig.path,
+        destination,
+        publishOptions
+      )
+      if (result.ok) {
+        addLog(`✓ Post pushed → ${result.filePath}`)
+        addLog(`✓ Destination: ${providerLabel} (${effectiveBranch})`)
+        await updateQueueItem(item.id, {
+          destination,
+          remoteProvider: destination,
+          remotePath: result.filePath || item.remotePath || null,
+          sourceSha: result.sha || item.sourceSha || null,
+          sourceLastCommitId: item.sourceLastCommitId || null,
+          remoteBranch: effectiveBranch,
+        })
+      } else {
+        addLog(`✗ ${result.error}`, false)
+        allOk = false
+      }
+
+      setPushing(false)
+
+      if (allOk) {
+        Alert.alert(
+          'Push complete!',
+          `Everything uploaded to ${providerLabel}. Remove from queue?`,
+          [
+            { text: 'Keep in queue', style: 'cancel' },
+            {
+              text: 'Remove',
+              onPress: async () => {
+                await removeFromQueue(item.id)
+                navigation.goBack()
+              },
+            },
+          ]
+        )
+      }
+    }
+
     if (!useRemoteIdentity) {
       const existingPosts = await listRepoPosts(settingsForPush, siteConfig.path, destination)
       if (existingPosts.ok) {
         const targetStem = getPathStem(item.filename)
         const conflictingPost = (existingPosts.posts || []).find(post => getPathStem(post.path) === targetStem)
         if (conflictingPost) {
+          addLog(`⚠ Existing repo post detected: ${conflictingPost.path}`)
           Alert.alert(
-            'Existing post found',
-            `A repo post with this slug already exists:\n${conflictingPost.path}\n\nOpen that post from Browse Repo and edit it there instead of pushing this queued item as a new file.`
+            'Post already exists',
+            `A repo post with this slug already exists:\n${conflictingPost.path}\n\nOverwrite it with your queued version?`,
+            [
+              {
+                text: 'Cancel',
+                style: 'cancel',
+                onPress: () => setPushing(false),
+              },
+              {
+                text: 'Overwrite',
+                style: 'destructive',
+                onPress: () => doPush({ remotePath: conflictingPost.path }),
+              },
+            ]
           )
-          addLog(`✗ Existing repo post detected: ${conflictingPost.path}`, false)
-          setPushing(false)
           return
         }
       }
     }
 
-    const normalizedContent = normalizeYamlDateScalars(item.content)
-    if (normalizedContent !== item.content) {
-      addLog('Normalized quoted YAML date fields before upload.')
-      await updateQueueItem(item.id, { content: normalizedContent })
-    }
-
-    const result = await publishFile(
-      item.filename,
-      normalizedContent,
-      settingsForPush,
-      siteConfig.path,
-      destination,
-      useRemoteIdentity ? {
-        remotePath: item.remotePath,
-        sourceSha: item.sourceSha,
-        lastCommitId: item.sourceLastCommitId,
-      } : {}
-    )
-    if (result.ok) {
-      addLog(`✓ Post pushed → ${result.filePath}`)
-      addLog(`✓ Destination: ${providerLabel} (${effectiveBranch})`)
-      await updateQueueItem(item.id, {
-        destination,
-        remoteProvider: destination,
-        remotePath: result.filePath || item.remotePath || null,
-        sourceSha: result.sha || item.sourceSha || null,
-        sourceLastCommitId: item.sourceLastCommitId || null,
-        remoteBranch: effectiveBranch,
-      })
-    } else {
-      addLog(`✗ ${result.error}`, false)
-      allOk = false
-    }
-
-    setPushing(false)
-
-    if (allOk) {
-      Alert.alert(
-        'Push complete!',
-        `Everything uploaded to ${providerLabel}. Remove from queue?`,
-        [
-          { text: 'Keep in queue', style: 'cancel' },
-          {
-            text: 'Remove',
-            onPress: async () => {
-              await removeFromQueue(item.id)
-              navigation.goBack()
-            },
-          },
-        ]
-      )
-    }
+    await doPush(useRemoteIdentity ? {
+      remotePath: item.remotePath,
+      sourceSha: item.sourceSha,
+      lastCommitId: item.sourceLastCommitId,
+    } : {})
   }
 
   const site = getSiteTheme(item.siteId)
