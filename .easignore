@@ -4,6 +4,7 @@ dist
 dist-export
 web-build
 .git
+.linked-worktrees
 android/.gradle
 android/build
 android/app/build
